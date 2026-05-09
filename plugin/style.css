@@ -952,16 +952,20 @@
     .cv-actions { opacity: 1; }
     .cv-act-jump span { display: none; }
     .cv-meta-row { gap: 10px; }
-    /* v0.3.18: 手机端折叠区 3 个按钮强制等宽平铺一行，避免「导出」单独换到第 2 行 */
+    /* v0.3.18 / v0.3.19: 手机端折叠区 3 按钮强制等宽平铺一行；
+       并用负 margin 让折叠区横跨整张卡片（含 avatar 下方空白），按钮文字才不挤 */
     .cv-card .cv-fold {
         flex-wrap: nowrap;
-        gap: 6px;
+        gap: 8px;
+        /* avatar 36px + 卡片内 gap 12px = 48px，正好顶到卡片左内边 */
+        margin-left: -48px;
     }
     .cv-fold-btn {
         flex: 1 1 0;
         min-width: 0;
         justify-content: center;
-        padding: 6px 8px;
+        padding: 7px 10px;
+        white-space: nowrap;
     }
 }
 
