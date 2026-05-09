@@ -33,8 +33,8 @@ const DEFAULT_SETTINGS = {
     // 阅读模式用的处理规则（与导出独立）
     readStrip:   { ...DEFAULT_STRIP },
     readExtract: { ...DEFAULT_EXTRACT },
-    // 阅读模式版式: 'card' = 卡片流（默认）, 'article' = 书页流（宋体无框）
-    readerStyle: 'card',
+    // 分页器模式: 'always' = 常驻底部, 'autoHide' = 下滑隐藏/上滑出现
+    readerPagerMode: 'always',
 };
 
 function loadSettings() {
@@ -1172,7 +1172,7 @@ function readerCfg() {
     return {
         strip:   { ...DEFAULT_STRIP,   ...(cfg.readStrip   || {}) },
         extract: { ...DEFAULT_EXTRACT, ...(cfg.readExtract || {}) },
-        style:   cfg.readerStyle === 'article' ? 'article' : 'card',
+        pagerMode: cfg.readerPagerMode === 'autoHide' ? 'autoHide' : 'always',
     };
 }
 
@@ -1184,7 +1184,6 @@ function renderReader() {
     const title = meta.customTitle || fileName;
     const avatarUrl = character.avatar ? `/thumbnail?type=avatar&file=${encodeURIComponent(character.avatar)}` : '';
     const cfgPre = readerCfg();
-    const styleAttr = cfgPre.style;
 
     // 浮动按钮（绝对定位、不占文档流），不再渲染顶栏
     const floatHtml = `
@@ -1192,7 +1191,7 @@ function renderReader() {
         <button class="cv-reader-fab cv-reader-fab-gear" id="cv_reader_gear" type="button" title="阅读模式设置">${ICONS.gear}</button>
         <div class="cv-reader-settings" id="cv_reader_settings" hidden></div>
     `;
-    const stageOpen = `<div class="cv-reader-stage" data-reader-style="${styleAttr}">${floatHtml}<div class="cv-reader-column">`;
+    const stageOpen = `<div class="cv-reader-stage" data-pager-mode="${cfgPre.pagerMode}">${floatHtml}<div class="cv-reader-column">`;
     const stageClose = `</div></div>`;
 
     if (!arr) {
@@ -1263,7 +1262,8 @@ function renderReader() {
         + headInfoHtml
         + `<div class="cv-reader-list">${cardHtml || '<div class="cv-empty">没有可显示的内容</div>'}</div>`
         + `<div class="cv-reader-bottom-spacer"></div>`
-        + stageClose.replace('</div></div>', `</div>${pagerHtml}</div>`);
+        + stageClose
+        + (pagerHtml ? `<div class="cv-reader-pager-wrap" data-pager-mode="${cfgPre.pagerMode}">${pagerHtml}</div>` : '');
     bindReaderHeader();
     bindReaderPager(totalPages);
     if (readerState.settingsOpen) {
@@ -1297,13 +1297,54 @@ function bindReaderHeader() {
     if (back) back.onclick = exitReader;
     const gear = document.getElementById('cv_reader_gear');
     const panel = document.getElementById('cv_reader_settings');
+    const stage = document.querySelector('.cv-reader-stage');
     if (gear && panel) {
-        gear.onclick = () => {
-            const willOpen = panel.hidden;
-            if (willOpen) renderReaderSettings(panel);
-            panel.hidden = !willOpen;
-            readerState.settingsOpen = willOpen;
+        const setOpen = (open) => {
+            readerState.settingsOpen = !!open;
+            panel.hidden = !open;
+            gear.classList.toggle('is-on', !!open);
+            if (open) renderReaderSettings(panel);
         };
+        gear.onclick = (e) => {
+            e.stopPropagation();
+            setOpen(!readerState.settingsOpen);
+        };
+        // 点击设置面板内部不冒泡（避免触发外部关闭）
+        panel.onclick = (e) => e.stopPropagation();
+        // 点击 stage 任意空白处关闭设置
+        if (stage) {
+            stage.onclick = () => {
+                if (readerState.settingsOpen) setOpen(false);
+            };
+        }
+    }
+    // 分页器自动隐藏（依赖滚动方向）
+    const pagerWrap = document.querySelector('.cv-reader-pager-wrap');
+    if (stage && pagerWrap) {
+        const mode = pagerWrap.dataset.pagerMode;
+        if (mode === 'autoHide') {
+            let lastY = stage.scrollTop;
+            let acc = 0;
+            stage.addEventListener('scroll', () => {
+                const y = stage.scrollTop;
+                const dy = y - lastY;
+                lastY = y;
+                if (Math.abs(dy) < 2) return;
+                acc = (Math.sign(dy) === Math.sign(acc)) ? acc + dy : dy;
+                if (acc > 24) {
+                    pagerWrap.classList.add('is-hidden');
+                    acc = 0;
+                } else if (acc < -24) {
+                    pagerWrap.classList.remove('is-hidden');
+                    acc = 0;
+                }
+                if (stage.scrollHeight - y - stage.clientHeight < 80) {
+                    pagerWrap.classList.remove('is-hidden');
+                }
+            }, { passive: true });
+        } else {
+            pagerWrap.classList.remove('is-hidden');
+        }
     }
 }
 
@@ -1341,20 +1382,32 @@ function renderReaderSettings(panel) {
                 <span class="cv-switch-track"><span class="cv-switch-thumb"></span></span>
             </span>
         </label>`;
-    const curStyle = (cfg.readerStyle === 'article') ? 'article' : 'card';
+    const curTheme = THEMES.some(t => t.id === cfg.theme) ? cfg.theme : 'dark';
+    const curPager = cfg.readerPagerMode === 'autoHide' ? 'autoHide' : 'always';
     panel.innerHTML = `
         <div class="cv-strip-box">
-            <div class="cv-strip-title">阅读版式</div>
+            <div class="cv-strip-title">配色方案</div>
             <div class="cv-reader-style-row">
-                <label class="cv-reader-style-opt ${curStyle==='card'?'is-on':''}">
-                    <input type="radio" name="cv_r_style" value="card" ${curStyle==='card'?'checked':''}/>
-                    <span class="cv-reader-style-name">卡片流</span>
-                    <span class="cv-reader-style-desc">用户/角色气泡居中，通用</span>
+                ${THEMES.map(t => `
+                    <label class="cv-reader-style-opt ${curTheme===t.id?'is-on':''}">
+                        <input type="radio" name="cv_r_theme" value="${t.id}" ${curTheme===t.id?'checked':''}/>
+                        <span class="cv-reader-style-name">${escapeHtml(t.name)}</span>
+                    </label>
+                `).join('')}
+            </div>
+        </div>
+        <div class="cv-strip-box">
+            <div class="cv-strip-title">分页器显示</div>
+            <div class="cv-reader-style-row">
+                <label class="cv-reader-style-opt ${curPager==='always'?'is-on':''}">
+                    <input type="radio" name="cv_r_pager" value="always" ${curPager==='always'?'checked':''}/>
+                    <span class="cv-reader-style-name">常驻底部</span>
+                    <span class="cv-reader-style-desc">始终悬浮可见</span>
                 </label>
-                <label class="cv-reader-style-opt ${curStyle==='article'?'is-on':''}">
-                    <input type="radio" name="cv_r_style" value="article" ${curStyle==='article'?'checked':''}/>
-                    <span class="cv-reader-style-name">书页流</span>
-                    <span class="cv-reader-style-desc">无框宋体，沉浸阅读</span>
+                <label class="cv-reader-style-opt ${curPager==='autoHide'?'is-on':''}">
+                    <input type="radio" name="cv_r_pager" value="autoHide" ${curPager==='autoHide'?'checked':''}/>
+                    <span class="cv-reader-style-name">滚动自动隐藏</span>
+                    <span class="cv-reader-style-desc">下滑隐藏 · 上滑出现</span>
                 </label>
             </div>
         </div>
@@ -1443,11 +1496,24 @@ function renderReaderSettings(panel) {
             repaint();
         };
     });
-    panel.querySelectorAll('input[name="cv_r_style"]').forEach(r => {
+    panel.querySelectorAll('input[name="cv_r_theme"]').forEach(r => {
         r.onchange = () => {
             if (!r.checked) return;
             const c = loadSettings();
-            saveSettings({ ...c, readerStyle: r.value === 'article' ? 'article' : 'card' });
+            saveSettings({ ...c, theme: r.value });
+            const root = document.getElementById('chatvault_panel');
+            if (root) root.className = currentThemeClass() + (readerState.active ? ' cv-in-reader' : '');
+            // 高亮选中态
+            panel.querySelectorAll('input[name="cv_r_theme"]').forEach(x => {
+                x.closest('.cv-reader-style-opt')?.classList.toggle('is-on', x.checked);
+            });
+        };
+    });
+    panel.querySelectorAll('input[name="cv_r_pager"]').forEach(r => {
+        r.onchange = () => {
+            if (!r.checked) return;
+            const c = loadSettings();
+            saveSettings({ ...c, readerPagerMode: r.value === 'autoHide' ? 'autoHide' : 'always' });
             renderReader();
         };
     });
