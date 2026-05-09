@@ -4,7 +4,7 @@
  * https://github.com/shanye5593/SillyTavern-ChatVault
  */
 
-const VERSION = '0.3.19-test';
+const VERSION = '0.3.20-test';
 const STORAGE_KEY = 'st-chatvault-meta';
 const SETTINGS_KEY = 'st-chatvault-settings';
 const PAGE_SIZE = 50;
@@ -470,6 +470,7 @@ const ICONS = {
     book: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>`,
     arrowL: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>`,
     gear: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9 1.65 1.65 0 0 0 4.27 7.18l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09A1.65 1.65 0 0 0 15 4.6a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.14.34.22.7.22 1.06V11a2 2 0 0 1 0 4z"/></svg>`,
+    refresh: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/><path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14"/></svg>`,
 };
 
 /* ============================================================
@@ -485,12 +486,12 @@ function openPanel() {
         <div id="chatvault_panel" onclick="event.stopPropagation()">
             <div class="cv-header">
                 <div class="cv-titleblock">
-                    <h1>聊天档案</h1>
-                    <span class="cv-version">v${VERSION}</span>
+                    <h1>聊天档案<span class="cv-snapshot-dot" id="cv_snapshot_dot" title="当前显示快照 · 点右上角刷新键同步最新"></span></h1>
                 </div>
                 <div class="cv-search-wrap">
                     <input type="text" class="cv-search" id="cv_search" placeholder="搜索角色名 / 聊天标题 / 标签…" />
                 </div>
+                <button class="cv-icon-btn cv-refresh-btn" id="cv_refresh" title="手动刷新（重新加载所有角色和聊天）">${ICONS.refresh}</button>
                 <button class="cv-icon-btn" id="cv_close" title="关闭 (Esc)">✕</button>
             </div>
             <div class="cv-tabbar">
@@ -512,6 +513,13 @@ function openPanel() {
     document.body.appendChild(panelEl);
 
     document.getElementById('cv_close').onclick = closePanel;
+    document.getElementById('cv_refresh').onclick = (e) => {
+        e.stopPropagation();
+        const btn = e.currentTarget;
+        if (btn.classList.contains('is-spinning')) return;
+        btn.classList.add('is-spinning');
+        loadAll().finally(() => btn.classList.remove('is-spinning'));
+    };
     document.getElementById('cv_search').oninput = (e) => {
         searchQuery = e.target.value.trim();
         currentPage = 1;
@@ -531,7 +539,20 @@ function openPanel() {
     });
 
     setupPreviewObserver();
-    loadAll();
+    // 瞬开模式 (B)：内存里已有 cache 就直接渲染，跳过 loadAll；
+    // 用户察觉数据过时可点标题栏的刷新按钮强制 loadAll。
+    if (charactersCache && charactersCache.length > 0) {
+        render();
+        observePreviews();
+        markSnapshot(true);   // 刷新按钮上挂个小绿点，告诉用户当前是快照
+    } else {
+        loadAll();
+    }
+}
+
+function markSnapshot(isSnapshot) {
+    const dot = document.getElementById('cv_snapshot_dot');
+    if (dot) dot.classList.toggle('is-on', !!isSnapshot);
 }
 
 function escHandler(e) {
@@ -612,6 +633,7 @@ async function loadAll() {
 
         const errCount = Object.keys(errorsByAvatar).length;
         setStatus(errCount ? `⚠ ${errCount} 个角色加载失败` : '');
+        markSnapshot(false);   // 新鲜数据，撤掉刷新按钮上的小绿点
         render();
     } catch (e) {
         console.error('[ChatVault] 加载失败', e);
