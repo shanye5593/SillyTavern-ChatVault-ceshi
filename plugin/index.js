@@ -17,12 +17,19 @@ const DEFAULT_STRIP = {
     thinking: true,
     think: true,
     htmlComment: true,
+    selfClosing: false,        // <PascalCaseTag ... /> 这种单标签前端占位
+    mdHeaders: false,          // ### 正文 这种 markdown 标题行
     custom: [],
 };
 const DEFAULT_EXTRACT = {
     content: false,           // <content>...</content>
     reply: false,             // <reply>...</reply>
     custom: [],               // [{open, close}, ...]
+};
+const DEFAULT_USER_RULES = {
+    enabled: false,
+    strip:   { ...DEFAULT_STRIP },
+    extract: { ...DEFAULT_EXTRACT },
 };
 const DEFAULT_SETTINGS = {
     enabled: true,
@@ -33,8 +40,10 @@ const DEFAULT_SETTINGS = {
     // 阅读模式用的处理规则（与导出独立）
     readStrip:   { ...DEFAULT_STRIP },
     readExtract: { ...DEFAULT_EXTRACT },
+    // user 消息单独的规则（覆盖上面这组）
+    userReadRules: { ...DEFAULT_USER_RULES },
     // 分页器模式: 'always' = 常驻底部, 'autoHide' = 下滑隐藏/上滑出现
-    readerPagerMode: 'always',
+    readerPagerMode: 'autoHide',
 };
 
 function loadSettings() {
@@ -1091,6 +1100,10 @@ function applyStripping(text, strip) {
     if (strip.thinking) out = out.replace(/<thinking[^>]*>[\s\S]*?<\/thinking>/gi, '');
     if (strip.think)    out = out.replace(/<think[^>]*>[\s\S]*?<\/think>/gi, '');
     if (strip.htmlComment) out = out.replace(/<!--[\s\S]*?-->/g, '');
+    // 自闭合占位标签 <StatusPlaceHolderImpl/>、<MemoryCard ... /> 等（PascalCase 开头，避免误伤 <br/> <img/>）
+    if (strip.selfClosing) out = out.replace(/<[A-Z][A-Za-z0-9_-]*\b[^>]*\/\s*>/g, '');
+    // markdown 标题行：### 正文 / ## 思考 等（整行去掉）
+    if (strip.mdHeaders)   out = out.replace(/^[ \t]*#{1,6}[ \t]+.*$/gm, '');
     if (Array.isArray(strip.custom)) {
         for (const pair of strip.custom) {
             if (!pair || !pair.open || !pair.close) continue;
@@ -1147,6 +1160,10 @@ async function enterReader(character, fileName) {
     readerState.fileName = fileName;
     readerState.arr = null;
     readerState.page = 1;
+    // 关键：清掉上一次聊天的处理缓存，否则切换聊天还是显示旧内容
+    readerState._processed = null;
+    readerState._cfgSig = null;
+    readerState.settingsOpen = false;
     const panel = document.getElementById('chatvault_panel');
     if (panel) panel.classList.add('cv-in-reader');
     renderReader();
@@ -1161,6 +1178,8 @@ async function enterReader(character, fileName) {
 function exitReader() {
     readerState.active = false;
     readerState.arr = null;
+    readerState._processed = null;
+    readerState._cfgSig = null;
     readerState.settingsOpen = false;
     const panel = document.getElementById('chatvault_panel');
     if (panel) panel.classList.remove('cv-in-reader');
@@ -1169,10 +1188,16 @@ function exitReader() {
 
 function readerCfg() {
     const cfg = loadSettings();
+    const u = { ...DEFAULT_USER_RULES, ...(cfg.userReadRules || {}) };
     return {
         strip:   { ...DEFAULT_STRIP,   ...(cfg.readStrip   || {}) },
         extract: { ...DEFAULT_EXTRACT, ...(cfg.readExtract || {}) },
-        pagerMode: cfg.readerPagerMode === 'autoHide' ? 'autoHide' : 'always',
+        userRules: {
+            enabled: !!u.enabled,
+            strip:   { ...DEFAULT_STRIP,   ...(u.strip   || {}) },
+            extract: { ...DEFAULT_EXTRACT, ...(u.extract || {}) },
+        },
+        pagerMode: cfg.readerPagerMode === 'always' ? 'always' : 'autoHide',
     };
 }
 
@@ -1210,13 +1235,17 @@ function renderReader() {
     const userName = arr[0]?.user_name || '用户';
     const charName = character.name || arr[0]?.character_name || '角色';
 
-    // 处理 + 缓存（依赖 strip/extract 配置，不含 style）
-    const cfgSig = JSON.stringify({ s: cfg.strip, e: cfg.extract });
+    // 处理 + 缓存（依赖 strip/extract/userRules 配置，不含 style）
+    const cfgSig = JSON.stringify({ s: cfg.strip, e: cfg.extract, u: cfg.userRules });
     if (readerState._cfgSig !== cfgSig || !readerState._processed) {
         readerState._cfgSig = cfgSig;
         readerState._processed = messages.map((m, idx) => {
-            const text = (m && typeof m.mes === 'string') ? processMessageText(m.mes, cfg.strip, cfg.extract) : '';
-            return { idx, who: m?.is_user ? userName : (m?.name || charName), is_user: !!m?.is_user, text };
+            const isUser = !!m?.is_user;
+            const useUser = cfg.userRules.enabled && isUser;
+            const s = useUser ? cfg.userRules.strip : cfg.strip;
+            const e = useUser ? cfg.userRules.extract : cfg.extract;
+            const text = (m && typeof m.mes === 'string') ? processMessageText(m.mes, s, e) : '';
+            return { idx, who: isUser ? userName : (m?.name || charName), is_user: isUser, text };
         });
     }
     const processed = readerState._processed;
@@ -1372,8 +1401,11 @@ function bindReaderPager(totalPages) {
 
 function renderReaderSettings(panel) {
     const cfg = loadSettings();
-    const strip = { ...DEFAULT_STRIP, ...(cfg.readStrip || {}) };
-    const extract = { ...DEFAULT_EXTRACT, ...(cfg.readExtract || {}) };
+    const userR   = { ...DEFAULT_USER_RULES, ...(cfg.userReadRules || {}) };
+    const strip   = { ...DEFAULT_STRIP,    ...(cfg.readStrip   || {}) };
+    const extract = { ...DEFAULT_EXTRACT,  ...(cfg.readExtract || {}) };
+    const ustrip   = { ...DEFAULT_STRIP,   ...(userR.strip   || {}) };
+    const uextract = { ...DEFAULT_EXTRACT, ...(userR.extract || {}) };
     const sw = (id, on, label) => `
         <label class="cv-switch-row">
             <span class="cv-switch-label">${label}</span>
@@ -1382,59 +1414,114 @@ function renderReaderSettings(panel) {
                 <span class="cv-switch-track"><span class="cv-switch-thumb"></span></span>
             </span>
         </label>`;
+    const stripBlock = (prefix, s) => `
+        ${sw(prefix+'_thinking', s.thinking,    '&lt;thinking&gt;…&lt;/thinking&gt;')}
+        ${sw(prefix+'_think',    s.think,       '&lt;think&gt;…&lt;/think&gt;')}
+        ${sw(prefix+'_html',     s.htmlComment, 'HTML 注释')}
+        ${sw(prefix+'_self',     s.selfClosing, '自闭合占位标签 &lt;XxxxImpl/&gt;')}
+        ${sw(prefix+'_md',       s.mdHeaders,   'Markdown 标题行（### 正文）')}
+        <div class="cv-strip-custom-title">自定义剥离对</div>
+        <div id="${prefix}_list"></div>
+        <button class="cv-btn cv-strip-add" id="${prefix}_add" type="button">+ 添加</button>
+    `;
+    const extractBlock = (prefix, e) => `
+        ${sw(prefix+'_content', e.content, '&lt;content&gt;…&lt;/content&gt;')}
+        ${sw(prefix+'_reply',   e.reply,   '&lt;reply&gt;…&lt;/reply&gt;')}
+        <div class="cv-strip-custom-title">自定义提取对</div>
+        <div id="${prefix}_list"></div>
+        <button class="cv-btn cv-strip-add" id="${prefix}_add" type="button">+ 添加</button>
+    `;
     const curTheme = THEMES.some(t => t.id === cfg.theme) ? cfg.theme : 'dark';
-    const curPager = cfg.readerPagerMode === 'autoHide' ? 'autoHide' : 'always';
+    const curPager = cfg.readerPagerMode === 'always' ? 'always' : 'autoHide';
     panel.innerHTML = `
-        <div class="cv-strip-box">
-            <div class="cv-strip-title">配色方案</div>
-            <div class="cv-reader-style-row">
-                ${THEMES.map(t => `
-                    <label class="cv-reader-style-opt ${curTheme===t.id?'is-on':''}">
-                        <input type="radio" name="cv_r_theme" value="${t.id}" ${curTheme===t.id?'checked':''}/>
-                        <span class="cv-reader-style-name">${escapeHtml(t.name)}</span>
+        <div class="cv-reader-settings-header">
+            <span class="cv-reader-settings-title">阅读模式设置</span>
+            <button class="cv-reader-settings-close" id="cv_r_close" type="button" title="关闭">×</button>
+        </div>
+        <div class="cv-reader-settings-body">
+            <div class="cv-strip-box">
+                <div class="cv-strip-title">配色方案</div>
+                <div class="cv-reader-style-row">
+                    ${THEMES.map(t => `
+                        <label class="cv-reader-style-opt ${curTheme===t.id?'is-on':''}">
+                            <input type="radio" name="cv_r_theme" value="${t.id}" ${curTheme===t.id?'checked':''}/>
+                            <span class="cv-reader-style-name">${escapeHtml(t.name)}</span>
+                        </label>
+                    `).join('')}
+                </div>
+            </div>
+            <div class="cv-strip-box">
+                <div class="cv-strip-title">分页器显示</div>
+                <div class="cv-reader-style-row">
+                    <label class="cv-reader-style-opt ${curPager==='autoHide'?'is-on':''}">
+                        <input type="radio" name="cv_r_pager" value="autoHide" ${curPager==='autoHide'?'checked':''}/>
+                        <span class="cv-reader-style-name">滚动自动隐藏</span>
+                        <span class="cv-reader-style-desc">下滑藏 · 上滑出</span>
                     </label>
-                `).join('')}
+                    <label class="cv-reader-style-opt ${curPager==='always'?'is-on':''}">
+                        <input type="radio" name="cv_r_pager" value="always" ${curPager==='always'?'checked':''}/>
+                        <span class="cv-reader-style-name">常驻底部</span>
+                        <span class="cv-reader-style-desc">始终悬浮可见</span>
+                    </label>
+                </div>
             </div>
-        </div>
-        <div class="cv-strip-box">
-            <div class="cv-strip-title">分页器显示</div>
-            <div class="cv-reader-style-row">
-                <label class="cv-reader-style-opt ${curPager==='always'?'is-on':''}">
-                    <input type="radio" name="cv_r_pager" value="always" ${curPager==='always'?'checked':''}/>
-                    <span class="cv-reader-style-name">常驻底部</span>
-                    <span class="cv-reader-style-desc">始终悬浮可见</span>
-                </label>
-                <label class="cv-reader-style-opt ${curPager==='autoHide'?'is-on':''}">
-                    <input type="radio" name="cv_r_pager" value="autoHide" ${curPager==='autoHide'?'checked':''}/>
-                    <span class="cv-reader-style-name">滚动自动隐藏</span>
-                    <span class="cv-reader-style-desc">下滑隐藏 · 上滑出现</span>
-                </label>
+            <div class="cv-strip-box">
+                <div class="cv-strip-title">剥离（默认 · 适用于 AI / 角色消息）</div>
+                ${stripBlock('cv_r_s', strip)}
             </div>
+            <div class="cv-strip-box">
+                <div class="cv-strip-title">提取（只保留这些标签内的内容；都没匹配到时保留原文）</div>
+                ${extractBlock('cv_r_e', extract)}
+            </div>
+            <div class="cv-strip-box cv-user-rules-box">
+                <label class="cv-switch-row">
+                    <span class="cv-switch-label"><b>user 消息单独规则</b></span>
+                    <span class="cv-switch">
+                        <input type="checkbox" id="cv_r_u_enabled" ${userR.enabled?'checked':''}/>
+                        <span class="cv-switch-track"><span class="cv-switch-thumb"></span></span>
+                    </span>
+                </label>
+                <div class="cv-field-hint">开启后，user 消息按下面这组规则处理（覆盖默认规则）。适合用记忆/状态栏插件、user 消息夹杂额外信息的场景。</div>
+                <div class="cv-user-rules-body" ${userR.enabled?'':'hidden'}>
+                    <div class="cv-strip-subbox">
+                        <div class="cv-strip-subtitle">user · 剥离</div>
+                        ${stripBlock('cv_r_us', ustrip)}
+                    </div>
+                    <div class="cv-strip-subbox">
+                        <div class="cv-strip-subtitle">user · 提取</div>
+                        ${extractBlock('cv_r_ue', uextract)}
+                    </div>
+                </div>
+            </div>
+            <div class="cv-reader-settings-hint">改完会立即重排当前页面</div>
         </div>
-        <div class="cv-strip-box">
-            <div class="cv-strip-title">剥离（删掉这些标签包裹的内容）</div>
-            ${sw('cv_r_s_thinking', strip.thinking, '&lt;thinking&gt;…&lt;/thinking&gt;')}
-            ${sw('cv_r_s_think',    strip.think,    '&lt;think&gt;…&lt;/think&gt;')}
-            ${sw('cv_r_s_html',     strip.htmlComment, 'HTML 注释')}
-            <div class="cv-strip-custom-title">自定义剥离对</div>
-            <div id="cv_r_s_list"></div>
-            <button class="cv-btn cv-strip-add" id="cv_r_s_add" type="button">+ 添加</button>
-        </div>
-        <div class="cv-strip-box">
-            <div class="cv-strip-title">提取（只保留这些标签内的内容；都没匹配到时保留原文）</div>
-            ${sw('cv_r_e_content', extract.content, '&lt;content&gt;…&lt;/content&gt;')}
-            ${sw('cv_r_e_reply',   extract.reply,   '&lt;reply&gt;…&lt;/reply&gt;')}
-            <div class="cv-strip-custom-title">自定义提取对</div>
-            <div id="cv_r_e_list"></div>
-            <button class="cv-btn cv-strip-add" id="cv_r_e_add" type="button">+ 添加</button>
-        </div>
-        <div class="cv-reader-settings-hint">改完会立即重排当前页面</div>
     `;
     const repaint = () => { readerState._processed = null; renderReader(); };
 
-    const renderList = (listId, key) => {
+    // —— 通用：按"路径"取/写规则对象 ——
+    const getRuleAt = (path) => {
+        let cur = loadSettings();
+        for (const p of path) cur = cur?.[p];
+        return cur || {};
+    };
+    const mutateRule = (path, isStrip, mutator) => {
+        const c = JSON.parse(JSON.stringify(loadSettings()));
+        let parent = c;
+        for (let i = 0; i < path.length - 1; i++) {
+            parent[path[i]] = parent[path[i]] || {};
+            parent = parent[path[i]];
+        }
+        const last = path[path.length - 1];
+        const base = isStrip ? DEFAULT_STRIP : DEFAULT_EXTRACT;
+        parent[last] = { ...base, ...(parent[last] || {}) };
+        mutator(parent[last]);
+        saveSettings(c);
+    };
+
+    const renderList = (listId, addBtnId, path, isStrip) => {
         const list = document.getElementById(listId);
-        const cur = (loadSettings()[key]?.custom) || [];
+        if (!list) return;
+        const cur = getRuleAt(path).custom || [];
         list.innerHTML = cur.map((p, i) => `
             <div class="cv-strip-pair" data-i="${i}">
                 <input type="text" class="cv-strip-open"  placeholder="前 tag" value="${escapeHtml(p.open || '')}"/>
@@ -1445,57 +1532,73 @@ function renderReaderSettings(panel) {
         list.querySelectorAll('.cv-strip-pair').forEach(row => {
             const i = Number(row.dataset.i);
             const sync = () => {
-                const c = loadSettings();
-                const arr = (c[key]?.custom || []).slice();
-                arr[i] = {
-                    open: row.querySelector('.cv-strip-open').value,
-                    close: row.querySelector('.cv-strip-close').value,
-                };
-                saveSettings({ ...c, [key]: { ...(key==='readStrip'?DEFAULT_STRIP:DEFAULT_EXTRACT), ...c[key], custom: arr } });
+                mutateRule(path, isStrip, r => {
+                    const arr = (r.custom || []).slice();
+                    arr[i] = {
+                        open: row.querySelector('.cv-strip-open').value,
+                        close: row.querySelector('.cv-strip-close').value,
+                    };
+                    r.custom = arr;
+                });
                 repaint();
             };
             row.querySelector('.cv-strip-open').oninput = sync;
             row.querySelector('.cv-strip-close').oninput = sync;
             row.querySelector('.cv-strip-del').onclick = () => {
-                const c = loadSettings();
-                const arr = (c[key]?.custom || []).filter((_, k) => k !== i);
-                saveSettings({ ...c, [key]: { ...(key==='readStrip'?DEFAULT_STRIP:DEFAULT_EXTRACT), ...c[key], custom: arr } });
-                renderList(listId, key);
+                mutateRule(path, isStrip, r => { r.custom = (r.custom || []).filter((_, k) => k !== i); });
+                renderList(listId, addBtnId, path, isStrip);
                 repaint();
             };
         });
+        const addBtn = document.getElementById(addBtnId);
+        if (addBtn) addBtn.onclick = () => {
+            mutateRule(path, isStrip, r => { r.custom = [...((r.custom)||[]), { open:'', close:'' }]; });
+            renderList(listId, addBtnId, path, isStrip);
+        };
     };
-    renderList('cv_r_s_list', 'readStrip');
-    renderList('cv_r_e_list', 'readExtract');
-    document.getElementById('cv_r_s_add').onclick = () => {
-        const c = loadSettings();
-        const arr = [...((c.readStrip?.custom) || []), { open: '', close: '' }];
-        saveSettings({ ...c, readStrip: { ...DEFAULT_STRIP, ...c.readStrip, custom: arr } });
-        renderList('cv_r_s_list', 'readStrip');
-    };
-    document.getElementById('cv_r_e_add').onclick = () => {
-        const c = loadSettings();
-        const arr = [...((c.readExtract?.custom) || []), { open: '', close: '' }];
-        saveSettings({ ...c, readExtract: { ...DEFAULT_EXTRACT, ...c.readExtract, custom: arr } });
-        renderList('cv_r_e_list', 'readExtract');
-    };
-    const flagMap = {
-        cv_r_s_thinking: ['readStrip', 'thinking'],
-        cv_r_s_think:    ['readStrip', 'think'],
-        cv_r_s_html:     ['readStrip', 'htmlComment'],
-        cv_r_e_content:  ['readExtract', 'content'],
-        cv_r_e_reply:    ['readExtract', 'reply'],
-    };
-    Object.entries(flagMap).forEach(([id, [grp, k]]) => {
+
+    renderList('cv_r_s_list',  'cv_r_s_add',  ['readStrip'],                 true);
+    renderList('cv_r_e_list',  'cv_r_e_add',  ['readExtract'],               false);
+    renderList('cv_r_us_list', 'cv_r_us_add', ['userReadRules', 'strip'],   true);
+    renderList('cv_r_ue_list', 'cv_r_ue_add', ['userReadRules', 'extract'], false);
+
+    // 开关 → [id, path, key, isStrip]
+    const flagMap = [
+        ['cv_r_s_thinking',   ['readStrip'],                 'thinking',    true],
+        ['cv_r_s_think',      ['readStrip'],                 'think',       true],
+        ['cv_r_s_html',       ['readStrip'],                 'htmlComment', true],
+        ['cv_r_s_self',       ['readStrip'],                 'selfClosing', true],
+        ['cv_r_s_md',         ['readStrip'],                 'mdHeaders',   true],
+        ['cv_r_e_content',    ['readExtract'],               'content',     false],
+        ['cv_r_e_reply',      ['readExtract'],               'reply',       false],
+        ['cv_r_us_thinking',  ['userReadRules', 'strip'],   'thinking',    true],
+        ['cv_r_us_think',     ['userReadRules', 'strip'],   'think',       true],
+        ['cv_r_us_html',      ['userReadRules', 'strip'],   'htmlComment', true],
+        ['cv_r_us_self',      ['userReadRules', 'strip'],   'selfClosing', true],
+        ['cv_r_us_md',        ['userReadRules', 'strip'],   'mdHeaders',   true],
+        ['cv_r_ue_content',   ['userReadRules', 'extract'], 'content',     false],
+        ['cv_r_ue_reply',     ['userReadRules', 'extract'], 'reply',       false],
+    ];
+    flagMap.forEach(([id, path, k, isStrip]) => {
         const el = document.getElementById(id);
         if (!el) return;
         el.onchange = () => {
-            const c = loadSettings();
-            const base = grp === 'readStrip' ? DEFAULT_STRIP : DEFAULT_EXTRACT;
-            saveSettings({ ...c, [grp]: { ...base, ...c[grp], [k]: el.checked } });
+            mutateRule(path, isStrip, r => { r[k] = el.checked; });
             repaint();
         };
     });
+
+    // user 规则总开关
+    const userToggle = document.getElementById('cv_r_u_enabled');
+    if (userToggle) userToggle.onchange = () => {
+        const c = loadSettings();
+        const cur = { ...DEFAULT_USER_RULES, ...(c.userReadRules || {}) };
+        saveSettings({ ...c, userReadRules: { ...cur, enabled: userToggle.checked } });
+        const body = panel.querySelector('.cv-user-rules-body');
+        if (body) body.hidden = !userToggle.checked;
+        repaint();
+    };
+
     panel.querySelectorAll('input[name="cv_r_theme"]').forEach(r => {
         r.onchange = () => {
             if (!r.checked) return;
@@ -1503,7 +1606,6 @@ function renderReaderSettings(panel) {
             saveSettings({ ...c, theme: r.value });
             const root = document.getElementById('chatvault_panel');
             if (root) root.className = currentThemeClass() + (readerState.active ? ' cv-in-reader' : '');
-            // 高亮选中态
             panel.querySelectorAll('input[name="cv_r_theme"]').forEach(x => {
                 x.closest('.cv-reader-style-opt')?.classList.toggle('is-on', x.checked);
             });
@@ -1513,10 +1615,20 @@ function renderReaderSettings(panel) {
         r.onchange = () => {
             if (!r.checked) return;
             const c = loadSettings();
-            saveSettings({ ...c, readerPagerMode: r.value === 'autoHide' ? 'autoHide' : 'always' });
+            saveSettings({ ...c, readerPagerMode: r.value === 'always' ? 'always' : 'autoHide' });
             renderReader();
         };
     });
+
+    // × 关闭按钮
+    const closeBtn = document.getElementById('cv_r_close');
+    if (closeBtn) closeBtn.onclick = (e) => {
+        e.stopPropagation();
+        readerState.settingsOpen = false;
+        panel.hidden = true;
+        const gear = document.getElementById('cv_reader_gear');
+        if (gear) gear.classList.remove('is-on');
+    };
 }
 
 function getCurrentChatFileName() {
