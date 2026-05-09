@@ -1517,3 +1517,24 @@
         align-items: start;
     }
 }
+
+/* v0.3.20-flash: 标题栏手动刷新按钮 + 旋转动画 */
+.cv-refresh-btn { font-size: 0; position: relative; }
+.cv-refresh-btn svg { width: 18px; height: 18px; }
+.cv-refresh-btn.is-spinning svg { animation: cv-spin 0.8s linear infinite; }
+@keyframes cv-spin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+}
+/* v0.3.23-flash: 快照状态指示挪到版本号旁边的小圆点（避免诱导点击刷新键）*/
+.cv-snapshot-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    margin-left: 6px;
+    background: transparent;
+    vertical-align: middle;
+    transition: background-color 0.2s;
+}
+.cv-snapshot-dot.is-on { background: var(--cv-accent, #4ade80); }
