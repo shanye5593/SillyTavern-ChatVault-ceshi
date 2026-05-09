@@ -1454,13 +1454,16 @@ function renderReaderSettings(panel) {
     const rFile = readerState.fileName || '';
     const rMeta = (rChar.avatar && rFile) ? getMetaFor(rChar.avatar, rFile) : {};
     const boundUA = rMeta.userAvatar || '';
+    // 探测酒馆的 personas 列表（多路径兜底，因为不同酒馆版本字段名不同）
+    let personas = {};   // { filename: displayName }
     let curPersonaFile = '';
-    let curPersonaName = '';
     try {
-        const ctx = SillyTavern.getContext();
-        curPersonaFile = ctx?.user_avatar || ctx?.userAvatar || '';
-        curPersonaName = ctx?.name1 || '';
+        const ctx = SillyTavern?.getContext?.() || {};
+        const pu = ctx.powerUserSettings || ctx.power_user || globalThis.power_user || {};
+        personas = pu.personas || ctx.personas || {};
+        curPersonaFile = ctx.user_avatar || ctx.userAvatar || pu.user_avatar || globalThis.user_avatar || '';
     } catch {}
+    const personaEntries = Object.entries(personas || {});
     const strip   = { ...DEFAULT_STRIP,    ...(cfg.readStrip   || {}) };
     const extract = { ...DEFAULT_EXTRACT,  ...(cfg.readExtract || {}) };
     const ustrip   = { ...DEFAULT_STRIP,   ...(userR.strip   || {}) };
@@ -1539,27 +1542,32 @@ function renderReaderSettings(panel) {
                     <button class="cv-info-btn" type="button" id="cv_r_ua_info" title="点击查看说明">!</button>
                 </div>
                 <div class="cv-info-tip" id="cv_r_ua_info_tip" hidden>
-                    聊天文件不记录 user 头像，无法准确还原"当时"的头像。可以把酒馆里已有的某个 persona 头像绑定到这条聊天，仅在阅读模式显示。<br>
+                    聊天文件不记录 user 头像，无法准确还原"当时"的头像。可以从下方酒馆已有 persona 中选一个绑定到本聊天，仅在阅读模式显示。<br>
                     <b>不会拷贝任何图片</b>，只在 meta 里存一个文件名字符串。换 persona 不影响其它聊天的绑定。
                 </div>
-                <div class="cv-ua-row">
-                    <div class="cv-ua-preview">
-                        ${boundUA
-                            ? `<img src="/thumbnail?type=persona&file=${encodeURIComponent(boundUA)}" alt="" onerror="this.style.visibility='hidden'"/>`
-                            : `<div class="cv-ua-empty">未绑定</div>`}
+                ${personaEntries.length ? `
+                    <div class="cv-field-hint">点选要绑定的 persona（再次点选当前选中项即可解绑）：</div>
+                    <div class="cv-ua-grid">
+                        <label class="cv-ua-opt cv-ua-opt-none ${!boundUA?'is-on':''}" data-file="">
+                            <div class="cv-ua-opt-img cv-ua-opt-none-icon">∅</div>
+                            <span class="cv-ua-opt-name">无</span>
+                        </label>
+                        ${personaEntries.map(([file, name]) => `
+                            <label class="cv-ua-opt ${boundUA===file?'is-on':''}" data-file="${escapeHtml(file)}" title="${escapeHtml(name||file)}">
+                                <img class="cv-ua-opt-img" src="/thumbnail?type=persona&file=${encodeURIComponent(file)}" alt="" onerror="this.style.visibility='hidden'"/>
+                                <span class="cv-ua-opt-name">${escapeHtml(name||file)}${file===curPersonaFile ? ' ·当前' : ''}</span>
+                            </label>
+                        `).join('')}
                     </div>
-                    <div class="cv-ua-info">
-                        <div class="cv-ua-status">${boundUA ? `已绑定：<code>${escapeHtml(boundUA)}</code>` : '当前显示首字徽章'}</div>
-                        <div class="cv-ua-actions">
-                            <button class="cv-btn" type="button" id="cv_r_ua_bind"
-                                ${curPersonaFile ? '' : 'disabled title="未检测到酒馆当前 persona"'}>
-                                绑定当前 persona${curPersonaName ? `（${escapeHtml(curPersonaName)}）` : ''}
-                            </button>
-                            <button class="cv-btn cv-btn-danger" type="button" id="cv_r_ua_clear"
-                                ${boundUA ? '' : 'disabled'}>解绑</button>
-                        </div>
+                ` : `
+                    <div class="cv-field-hint">未能从酒馆读取 persona 列表。请手动输入 <code>User Avatars</code> 目录下的图片文件名（如 <code>user-default.png</code>）：</div>
+                    <div class="cv-ua-manual">
+                        <input type="text" id="cv_r_ua_input" placeholder="user-default.png" value="${escapeHtml(boundUA)}"/>
+                        <button class="cv-btn" id="cv_r_ua_apply" type="button">绑定</button>
+                        <button class="cv-btn cv-btn-danger" id="cv_r_ua_clear" type="button" ${boundUA?'':'disabled'}>解绑</button>
                     </div>
-                </div>
+                    <div class="cv-field-hint" style="margin-top:6px">当前已绑定：${boundUA ? `<code>${escapeHtml(boundUA)}</code>` : '（无）'}</div>
+                `}
             </div>
             <div class="cv-strip-box">
                 <div class="cv-strip-title">剥离（默认 · 适用于 AI / 角色消息）</div>
@@ -1761,19 +1769,27 @@ function renderReaderSettings(panel) {
     bindInfoToggle('cv_r_e_info',  'cv_r_e_info_tip');
     bindInfoToggle('cv_r_ua_info', 'cv_r_ua_info_tip');
 
-    // user 头像绑定 / 解绑
-    const uaBind  = document.getElementById('cv_r_ua_bind');
-    const uaClear = document.getElementById('cv_r_ua_clear');
-    if (uaBind) uaBind.onclick = () => {
-        if (!rChar.avatar || !rFile || !curPersonaFile) return;
-        patchMetaFor(rChar.avatar, rFile, { userAvatar: curPersonaFile });
+    // user 头像：网格点选 / 手动输入
+    const applyUA = (file) => {
+        if (!rChar.avatar || !rFile) return;
+        patchMetaFor(rChar.avatar, rFile, { userAvatar: file || '' });
         renderReader();   // 重渲染：会重画 stage、然后重新打开设置面板
     };
-    if (uaClear) uaClear.onclick = () => {
-        if (!rChar.avatar || !rFile) return;
-        patchMetaFor(rChar.avatar, rFile, { userAvatar: '' });
-        renderReader();
-    };
+    panel.querySelectorAll('.cv-ua-opt').forEach(opt => {
+        opt.onclick = (e) => {
+            e.preventDefault();   // label 点击不触发任何隐藏 input
+            e.stopPropagation();
+            const file = opt.dataset.file || '';
+            // 再次点选当前已选项 = 解绑
+            if (file === boundUA) applyUA('');
+            else applyUA(file);
+        };
+    });
+    const uaApply = document.getElementById('cv_r_ua_apply');
+    const uaInput = document.getElementById('cv_r_ua_input');
+    const uaClear = document.getElementById('cv_r_ua_clear');
+    if (uaApply && uaInput) uaApply.onclick = () => applyUA(uaInput.value.trim());
+    if (uaClear) uaClear.onclick = () => applyUA('');
 
     // × 关闭按钮
     const closeBtn = document.getElementById('cv_r_close');
