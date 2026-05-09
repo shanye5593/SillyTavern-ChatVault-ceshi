@@ -106,7 +106,8 @@ function patchMetaFor(avatar, fileName, patch) {
     // 清理空值
     if (m[k].customTitle === '') delete m[k].customTitle;
     if (Array.isArray(m[k].tags) && m[k].tags.length === 0) delete m[k].tags;
-    if (!m[k].starred && !m[k].customTitle && !m[k].tags) {
+    if (m[k].userAvatar === '') delete m[k].userAvatar;
+    if (!m[k].starred && !m[k].customTitle && !m[k].tags && !m[k].userAvatar) {
         delete m[k];
     }
     saveMeta(m);
@@ -1264,6 +1265,11 @@ function renderReader() {
         : (arr[0]?.user_name && arr[0].user_name !== 'unused' ? arr[0].user_name : '');
     const userName = recordedUserName || '你';
     const charName = character.name || arr[0]?.character_name || '角色';
+    // 自定义绑定的 user 头像（仅文件名，图片走酒馆已有 /thumbnail，零附加存储）
+    const boundUserAvatarFile = meta.userAvatar || '';
+    const boundUserAvatarUrl = boundUserAvatarFile
+        ? `/thumbnail?type=persona&file=${encodeURIComponent(boundUserAvatarFile)}`
+        : '';
 
     // 处理 + 缓存（依赖 strip/extract/userRules 配置，不含 style）
     const cfgSig = JSON.stringify({ s: cfg.strip, e: cfg.extract, u: cfg.userRules });
@@ -1309,9 +1315,12 @@ function renderReader() {
                 .map(seg => `<p class="cv-msg-p">${escapeHtml(seg)}</p>`).join('')
               || '<span class="cv-reader-empty">（空）</span>'
             : '<span class="cv-reader-empty">（空）</span>';
-        // user 头像聊天文件里没记录，无法准确还原历史 —— 统一用首字徽章；char 用真实头像
+        // user 头像：若聊天 meta 里绑定了 persona 文件名，走 /thumbnail（零附加存储）；否则首字徽章
+        const userAvHtml = boundUserAvatarUrl
+            ? `<img class="cv-reader-msg-avatar" src="${boundUserAvatarUrl}" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-flex'" alt=""/><div class="cv-reader-msg-avatar cv-reader-user-avatar" style="display:none">${escapeHtml((m.who||'你').slice(0,1))}</div>`
+            : `<div class="cv-reader-msg-avatar cv-reader-user-avatar">${escapeHtml((m.who||'你').slice(0,1))}</div>`;
         const avHtml = m.is_user
-            ? `<div class="cv-reader-msg-avatar cv-reader-user-avatar">${escapeHtml((m.who||'你').slice(0,1))}</div>`
+            ? userAvHtml
             : (avatarUrl
                 ? `<img class="cv-reader-msg-avatar" src="${avatarUrl}" onerror="this.style.visibility='hidden'" alt=""/>`
                 : `<div class="cv-reader-msg-avatar">${escapeHtml((m.who||'C').slice(0,1))}</div>`);
@@ -1440,6 +1449,18 @@ function bindReaderPager(totalPages) {
 function renderReaderSettings(panel) {
     const cfg = loadSettings();
     const userR   = { ...DEFAULT_USER_RULES, ...(cfg.userReadRules || {}) };
+    // 当前聊天的 user 头像绑定
+    const rChar = readerState.character || {};
+    const rFile = readerState.fileName || '';
+    const rMeta = (rChar.avatar && rFile) ? getMetaFor(rChar.avatar, rFile) : {};
+    const boundUA = rMeta.userAvatar || '';
+    let curPersonaFile = '';
+    let curPersonaName = '';
+    try {
+        const ctx = SillyTavern.getContext();
+        curPersonaFile = ctx?.user_avatar || ctx?.userAvatar || '';
+        curPersonaName = ctx?.name1 || '';
+    } catch {}
     const strip   = { ...DEFAULT_STRIP,    ...(cfg.readStrip   || {}) };
     const extract = { ...DEFAULT_EXTRACT,  ...(cfg.readExtract || {}) };
     const ustrip   = { ...DEFAULT_STRIP,   ...(userR.strip   || {}) };
@@ -1511,6 +1532,34 @@ function renderReaderSettings(panel) {
                     <span class="cv-reader-fontsize-val" id="cv_r_fontsize_val">${cfg.readerFontSize || 15}px</span>
                 </div>
                 ${sw('cv_r_indent', !!cfg.readerIndent, '段落首行缩进 2 字')}
+            </div>
+            <div class="cv-strip-box">
+                <div class="cv-strip-title">
+                    user 头像（仅本聊天）
+                    <button class="cv-info-btn" type="button" id="cv_r_ua_info" title="点击查看说明">!</button>
+                </div>
+                <div class="cv-info-tip" id="cv_r_ua_info_tip" hidden>
+                    聊天文件不记录 user 头像，无法准确还原"当时"的头像。可以把酒馆里已有的某个 persona 头像绑定到这条聊天，仅在阅读模式显示。<br>
+                    <b>不会拷贝任何图片</b>，只在 meta 里存一个文件名字符串。换 persona 不影响其它聊天的绑定。
+                </div>
+                <div class="cv-ua-row">
+                    <div class="cv-ua-preview">
+                        ${boundUA
+                            ? `<img src="/thumbnail?type=persona&file=${encodeURIComponent(boundUA)}" alt="" onerror="this.style.visibility='hidden'"/>`
+                            : `<div class="cv-ua-empty">未绑定</div>`}
+                    </div>
+                    <div class="cv-ua-info">
+                        <div class="cv-ua-status">${boundUA ? `已绑定：<code>${escapeHtml(boundUA)}</code>` : '当前显示首字徽章'}</div>
+                        <div class="cv-ua-actions">
+                            <button class="cv-btn" type="button" id="cv_r_ua_bind"
+                                ${curPersonaFile ? '' : 'disabled title="未检测到酒馆当前 persona"'}>
+                                绑定当前 persona${curPersonaName ? `（${escapeHtml(curPersonaName)}）` : ''}
+                            </button>
+                            <button class="cv-btn cv-btn-danger" type="button" id="cv_r_ua_clear"
+                                ${boundUA ? '' : 'disabled'}>解绑</button>
+                        </div>
+                    </div>
+                </div>
             </div>
             <div class="cv-strip-box">
                 <div class="cv-strip-title">剥离（默认 · 适用于 AI / 角色消息）</div>
@@ -1699,15 +1748,32 @@ function renderReaderSettings(panel) {
     };
 
     // 提取功能的"!"说明按钮 → 切换展开 tip
-    const infoBtn = document.getElementById('cv_r_e_info');
-    const infoTip = document.getElementById('cv_r_e_info_tip');
-    if (infoBtn && infoTip) {
-        infoBtn.onclick = (e) => {
+    const bindInfoToggle = (btnId, tipId) => {
+        const b = document.getElementById(btnId);
+        const t = document.getElementById(tipId);
+        if (!b || !t) return;
+        b.onclick = (e) => {
             e.stopPropagation();
-            infoTip.hidden = !infoTip.hidden;
-            infoBtn.classList.toggle('is-on', !infoTip.hidden);
+            t.hidden = !t.hidden;
+            b.classList.toggle('is-on', !t.hidden);
         };
-    }
+    };
+    bindInfoToggle('cv_r_e_info',  'cv_r_e_info_tip');
+    bindInfoToggle('cv_r_ua_info', 'cv_r_ua_info_tip');
+
+    // user 头像绑定 / 解绑
+    const uaBind  = document.getElementById('cv_r_ua_bind');
+    const uaClear = document.getElementById('cv_r_ua_clear');
+    if (uaBind) uaBind.onclick = () => {
+        if (!rChar.avatar || !rFile || !curPersonaFile) return;
+        patchMetaFor(rChar.avatar, rFile, { userAvatar: curPersonaFile });
+        renderReader();   // 重渲染：会重画 stage、然后重新打开设置面板
+    };
+    if (uaClear) uaClear.onclick = () => {
+        if (!rChar.avatar || !rFile) return;
+        patchMetaFor(rChar.avatar, rFile, { userAvatar: '' });
+        renderReader();
+    };
 
     // × 关闭按钮
     const closeBtn = document.getElementById('cv_r_close');
