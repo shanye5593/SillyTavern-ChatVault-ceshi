@@ -952,6 +952,17 @@
     .cv-actions { opacity: 1; }
     .cv-act-jump span { display: none; }
     .cv-meta-row { gap: 10px; }
+    /* v0.3.18: 手机端折叠区 3 个按钮强制等宽平铺一行，避免「导出」单独换到第 2 行 */
+    .cv-card .cv-fold {
+        flex-wrap: nowrap;
+        gap: 6px;
+    }
+    .cv-fold-btn {
+        flex: 1 1 0;
+        min-width: 0;
+        justify-content: center;
+        padding: 6px 8px;
+    }
 }
 
 /* ============================================================
