@@ -4,7 +4,7 @@
  * https://github.com/shanye5593/SillyTavern-ChatVault
  */
 
-const VERSION = '0.3.14-test';
+const VERSION = '0.3.15-test';
 const STORAGE_KEY = 'st-chatvault-meta';
 const SETTINGS_KEY = 'st-chatvault-settings';
 const PAGE_SIZE = 50;
@@ -484,7 +484,10 @@ function openPanel() {
     panelEl.innerHTML = `
         <div id="chatvault_panel" onclick="event.stopPropagation()">
             <div class="cv-header">
-                <h1>聊天档案 <span style="opacity:0.4;font-size:11px;font-weight:400;letter-spacing:0">v${VERSION}</span></h1>
+                <div class="cv-titleblock">
+                    <h1>聊天档案</h1>
+                    <span class="cv-version">v${VERSION}</span>
+                </div>
                 <div class="cv-search-wrap">
                     <input type="text" class="cv-search" id="cv_search" placeholder="搜索角色名 / 聊天标题 / 标签…" />
                 </div>
@@ -777,7 +780,9 @@ function render() {
     } else {
         // 当前角色 tab：卡片省略角色名（同一角色重复无意义）
         const hideCharName = activeTab === 'current';
-        body.innerHTML = currentHeader + `<div class="cv-list">${slice.map(({ character, chat }) => renderCard(character, chat, hideCharName)).join('')}</div>`;
+        // 「最近」tab 在 PC 端用双列网格（其它 tab 维持单列长条）
+        const listClass = activeTab === 'recent' ? 'cv-list cv-list-grid' : 'cv-list';
+        body.innerHTML = currentHeader + `<div class="${listClass}">${slice.map(({ character, chat }) => renderCard(character, chat, hideCharName)).join('')}</div>`;
         bindCardEvents();
         observePreviews();
     }
