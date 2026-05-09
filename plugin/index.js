@@ -4,7 +4,7 @@
  * https://github.com/shanye5593/SillyTavern-ChatVault
  */
 
-const VERSION = '0.3.15-test';
+const VERSION = '0.3.16-test';
 const STORAGE_KEY = 'st-chatvault-meta';
 const SETTINGS_KEY = 'st-chatvault-settings';
 const PAGE_SIZE = 50;
@@ -780,9 +780,8 @@ function render() {
     } else {
         // 当前角色 tab：卡片省略角色名（同一角色重复无意义）
         const hideCharName = activeTab === 'current';
-        // 「最近」tab 在 PC 端用双列网格（其它 tab 维持单列长条）
-        const listClass = activeTab === 'recent' ? 'cv-list cv-list-grid' : 'cv-list';
-        body.innerHTML = currentHeader + `<div class="${listClass}">${slice.map(({ character, chat }) => renderCard(character, chat, hideCharName)).join('')}</div>`;
+        // PC 端所有 tab 都用双列网格（移动端 CSS 媒体查询会自动回退单列）
+        body.innerHTML = currentHeader + `<div class="cv-list cv-list-grid">${slice.map(({ character, chat }) => renderCard(character, chat, hideCharName)).join('')}</div>`;
         bindCardEvents();
         observePreviews();
     }
@@ -843,7 +842,7 @@ function renderCharactersTab(body) {
                         ${ICONS.plus}<span>新建聊天</span>
                     </button>
                 </div>
-                <div class="cv-list cv-group-list">
+                <div class="cv-list cv-list-grid cv-group-list">
                     ${chats.map(ch => renderCard(c, ch, /*hideCharName*/ true)).join('')}
                 </div>
             </div>
