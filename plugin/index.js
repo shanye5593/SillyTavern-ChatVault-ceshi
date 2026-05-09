@@ -4,7 +4,7 @@
  * https://github.com/shanye5593/SillyTavern-ChatVault
  */
 
-const VERSION = '0.2.5';
+const VERSION = '0.3.14-test';
 const STORAGE_KEY = 'st-chatvault-meta';
 const SETTINGS_KEY = 'st-chatvault-settings';
 const PAGE_SIZE = 50;
@@ -46,14 +46,10 @@ const DEFAULT_USER_RULES = {
 const DEFAULT_SETTINGS = {
     enabled: true,
     theme: 'dark',
-    // 导出 txt 用的处理规则（与阅读模式独立）
+    // 摘取规则（v0.3.14 起阅读 / 导出共用一套，从主面板卡片折叠区进入编辑）
     strip:   { ...DEFAULT_STRIP },
     extract: { ...DEFAULT_EXTRACT },
     userRules: JSON.parse(JSON.stringify(DEFAULT_USER_RULES)),
-    // 阅读模式用的处理规则
-    readStrip:   { ...DEFAULT_STRIP },
-    readExtract: { ...DEFAULT_EXTRACT },
-    userReadRules: JSON.parse(JSON.stringify(DEFAULT_USER_RULES)),
     // 分页器模式: 'always' = 常驻底部, 'autoHide' = 下滑隐藏/上滑出现（同时控制悬浮按钮）
     readerPagerMode: 'autoHide',
     // 阅读模式正文字号 (px)
@@ -64,7 +60,16 @@ const DEFAULT_SETTINGS = {
 
 function loadSettings() {
     try {
-        return { ...DEFAULT_SETTINGS, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') };
+        const s = { ...DEFAULT_SETTINGS, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') };
+        // v0.3.14 迁移：阅读 / 导出 规则合并为同一套
+        if (s.readStrip || s.readExtract || s.userReadRules) {
+            if (s.readStrip   && !localStorage.getItem(SETTINGS_KEY + '__migrated_strip'))   s.strip     = { ...DEFAULT_STRIP,   ...s.readStrip };
+            if (s.readExtract && !localStorage.getItem(SETTINGS_KEY + '__migrated_extract')) s.extract   = { ...DEFAULT_EXTRACT, ...s.readExtract };
+            if (s.userReadRules)                                                              s.userRules = JSON.parse(JSON.stringify(s.userReadRules));
+            delete s.readStrip; delete s.readExtract; delete s.userReadRules;
+            try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); } catch {}
+        }
+        return s;
     } catch {
         return { ...DEFAULT_SETTINGS };
     }
@@ -927,6 +932,7 @@ function renderCard(character, chat, hideCharName = false) {
                 <div class="cv-preview is-loading" data-preview="1">加载预览中…</div>
                 <div class="cv-fold">
                     <button class="cv-fold-btn cv-fold-primary" data-act="reader" type="button">${ICONS.book}<span>阅读模式</span></button>
+                    <button class="cv-fold-btn" data-act="rules" type="button">${ICONS.gear}<span>摘取规则</span></button>
                     <button class="cv-fold-btn" data-act="export" type="button">${ICONS.download}<span>导出</span></button>
                 </div>
             </div>
@@ -986,6 +992,7 @@ function bindCardEvents() {
                 e.stopPropagation();
                 const act = btn.dataset.act;
                 if (act === 'reader') enterReader(character, fileName);
+                else if (act === 'rules') openRulesModal();
                 else if (act === 'export') openExportModal(character, fileName);
             };
         });
@@ -1209,11 +1216,11 @@ function exitReader() {
 
 function readerCfg() {
     const cfg = loadSettings();
-    const u = { ...DEFAULT_USER_RULES, ...(cfg.userReadRules || {}) };
+    const u = { ...DEFAULT_USER_RULES, ...(cfg.userRules || {}) };
     const fs = Number(cfg.readerFontSize);
     return {
-        strip:   { ...DEFAULT_STRIP,   ...(cfg.readStrip   || {}) },
-        extract: { ...DEFAULT_EXTRACT, ...(cfg.readExtract || {}) },
+        strip:   { ...DEFAULT_STRIP,   ...(cfg.strip   || {}) },
+        extract: { ...DEFAULT_EXTRACT, ...(cfg.extract || {}) },
         userRules: {
             enabled: !!u.enabled,
             strip:   { ...DEFAULT_STRIP,   ...(u.strip   || {}) },
@@ -1457,9 +1464,9 @@ function bindReaderPager(totalPages) {
 function mountRulesEditor(host, opts) {
     if (!host) return;
     const px         = opts.prefix;                 // 例：'cv_r' / 'cv_x'
-    const stripPath  = opts.stripPath;              // 例：['readStrip'] / ['strip']
-    const extractPath= opts.extractPath;            // 例：['readExtract'] / ['extract']
-    const userPath   = opts.userPath;               // 例：['userReadRules'] / ['userRules']
+    const stripPath  = opts.stripPath;              // 例：['strip']
+    const extractPath= opts.extractPath;            // 例：['extract']
+    const userPath   = opts.userPath;               // 例：['userRules']
     const repaint    = typeof opts.repaint === 'function' ? opts.repaint : () => {};
 
     const getAt = (obj, path) => { let c = obj; for (const k of path) c = c?.[k]; return c; };
@@ -1750,36 +1757,9 @@ function renderReaderSettings(panel) {
                     <div class="cv-field-hint" style="margin-top:6px">当前已绑定：${boundUA ? `<code>${escapeHtml(boundUA)}</code>` : '（无）'}</div>
                 `}
             </div>
-            <div id="cv_r_rules_holder"></div>
-            <div class="cv-reader-settings-hint">改完会立即重排当前页面</div>
+            <div class="cv-reader-settings-hint">摘取规则已搬到主面板每张卡片折叠区的「摘取规则」按钮，阅读 / 导出共用一套</div>
         </div>
     `;
-    // repaint 必须保留滚动位置 —— 阅读区和设置面板都不能回顶。
-    // 默认 renderReader 末尾会把 stage/body.scrollTop 归 0（那是为翻页设计的），
-    // 这里调用前后做一次快照 + 恢复。
-    const repaint = () => {
-        const stageBefore = document.querySelector('.cv-reader-stage');
-        const bodyBefore = document.getElementById('cv_body');
-        const settingsBefore = document.getElementById('cv_reader_settings');
-        const sStage = stageBefore ? stageBefore.scrollTop : 0;
-        const sBody = bodyBefore ? bodyBefore.scrollTop : 0;
-        const sSettings = settingsBefore ? settingsBefore.scrollTop : 0;
-        readerState._processed = null;
-        renderReader();
-        const stageAfter = document.querySelector('.cv-reader-stage');
-        const bodyAfter = document.getElementById('cv_body');
-        const settingsAfter = document.getElementById('cv_reader_settings');
-        if (stageAfter) stageAfter.scrollTop = sStage;
-        if (bodyAfter) bodyAfter.scrollTop = sBody;
-        if (settingsAfter) settingsAfter.scrollTop = sSettings;
-    };
-    mountRulesEditor(panel.querySelector('#cv_r_rules_holder'), {
-        prefix: 'cv_r',
-        stripPath: ['readStrip'],
-        extractPath: ['readExtract'],
-        userPath: ['userReadRules'],
-        repaint,
-    });
 
     panel.querySelectorAll('input[name="cv_r_theme"]').forEach(r => {
         r.onchange = () => {
@@ -2144,13 +2124,10 @@ function openExportModal(character, fileName) {
                     <button class="cv-export-card" id="cv_x_txt" type="button">
                         <span class="cv-export-card-icon">${ICONS.download}</span>
                         <span class="cv-export-card-title">txt</span>
-                        <span class="cv-export-card-desc">纯文本，按下方"txt 摘取规则"处理</span>
+                        <span class="cv-export-card-desc">纯文本，按当前的"摘取规则"处理</span>
                     </button>
                 </div>
-                <details class="cv-export-rules" id="cv_x_rules">
-                    <summary>txt 摘取规则（与阅读模式独立）</summary>
-                    <div class="cv-export-rules-body" id="cv_x_rules_body"></div>
-                </details>
+                <div class="cv-export-hint">txt 按当前的「摘取规则」处理；要改规则请到主面板卡片折叠区点「摘取规则」</div>
             </div>
             <div class="cv-modal-actions">
                 <button class="cv-btn" id="cv_x_cancel">关闭</button>
@@ -2163,9 +2140,39 @@ function openExportModal(character, fileName) {
     document.getElementById('cv_x_cancel').onclick = closeModal;
     document.getElementById('cv_x_jsonl').onclick = () => { exportChatJsonl(character, fileName); closeModal(); };
     document.getElementById('cv_x_txt').onclick   = () => { exportChatTxt(character, fileName);   closeModal(); };
-    // 在导出 modal 里挂载完整规则编辑器；导出无实时预览，repaint 留空
-    mountRulesEditor(document.getElementById('cv_x_rules_body'), {
-        prefix: 'cv_x',
+}
+
+/* ============================================================
+ *  摘取规则 modal（独立窗口；阅读 / 导出共用同一套规则）
+ *  独立 modal 的好处：编辑过程中不会触发任何外部组件重渲染，
+ *  从根本上避免阅读模式下「改规则正文+设置一起回顶」的 bug
+ * ============================================================ */
+
+function openRulesModal() {
+    closeModal();
+    const wrap = document.createElement('div');
+    wrap.className = 'cv-modal-backdrop';
+    wrap.id = 'cv_modal';
+    wrap.innerHTML = `
+        <div class="cv-modal cv-modal-wide" onclick="event.stopPropagation()">
+            <button class="cv-modal-close" id="cv_rules_close" type="button" title="关闭">${ICONS.close}</button>
+            <h3>摘取规则</h3>
+            <div class="cv-modal-body">
+                <div class="cv-rules-modal-hint">阅读模式与导出 txt 共用此套规则；改完会即时保存，下次打开阅读模式或导出时生效</div>
+                <div id="cv_rules_holder"></div>
+            </div>
+            <div class="cv-modal-actions">
+                <button class="cv-btn" id="cv_rules_done">完成</button>
+            </div>
+        </div>
+    `;
+    wrap.onclick = closeModal;
+    document.getElementById('chatvault_panel').appendChild(wrap);
+    document.getElementById('cv_rules_close').onclick = closeModal;
+    document.getElementById('cv_rules_done').onclick = closeModal;
+    // 独立 modal：repaint 留空，规则改动不会触发任何外部 DOM 重渲染
+    mountRulesEditor(document.getElementById('cv_rules_holder'), {
+        prefix: 'cv_rules',
         stripPath: ['strip'],
         extractPath: ['extract'],
         userPath: ['userRules'],
