@@ -1018,6 +1018,12 @@
     opacity: .85;
 }
 .cv-reader-fab:hover { opacity: 1; background: color-mix(in srgb, var(--cv-bg-panel, #1f2230) 85%, transparent); }
+.cv-reader-fab.is-on {
+    opacity: 1;
+    border-color: var(--cv-accent, #6e8efb);
+    color: var(--cv-accent, #6e8efb);
+    background: color-mix(in srgb, var(--cv-accent, #6e8efb) 14%, var(--cv-bg-panel, #1f2230) 80%);
+}
 .cv-reader-fab svg { width: 16px; height: 16px; }
 .cv-reader-fab-back { left: 16px; }
 .cv-reader-fab-gear { right: 16px; }
@@ -1096,49 +1102,36 @@
 }
 .cv-reader-empty { opacity: .5; font-style: italic; }
 
-/* —— B 书页流：无框、宋体、悬挂缩进 —— */
-.cv-reader-stage[data-reader-style="article"] .cv-reader-column { max-width: 640px; }
-.cv-reader-stage[data-reader-style="article"] .cv-reader-list { gap: 22px; }
-.cv-reader-stage[data-reader-style="article"] .cv-reader-msg {
-    border: 0 !important;
-    background: transparent !important;
-    padding: 0 !important;
-    border-radius: 0;
-}
-.cv-reader-stage[data-reader-style="article"] .cv-reader-msg-head {
-    margin-bottom: 4px;
-    padding-bottom: 4px;
-    border-bottom: 1px solid var(--cv-border, rgba(255,255,255,0.06));
-    opacity: .8;
-}
-.cv-reader-stage[data-reader-style="article"] .cv-reader-msg-avatar {
-    width: 18px; height: 18px; font-size: 10px;
-}
-.cv-reader-stage[data-reader-style="article"] .cv-reader-msg-body {
-    font-family: "Source Han Serif SC", "Noto Serif SC", "Songti SC",
-                 "SimSun", "宋体", Georgia, "Times New Roman", serif;
-    font-size: 15.5px; line-height: 2.0;
-    text-indent: 2em;
-    color: var(--cv-text-primary, inherit);
-}
-.cv-reader-stage[data-reader-style="article"] .cv-reader-msg-body br + br { display: none; }
-
 /* 底部留白，给浮动分页器让位 */
 .cv-reader-bottom-spacer { height: 96px; }
 
-/* —— 阅读模式分页器：浮在 stage 底部 —— */
-.cv-reader-stage .cv-reader-pager {
-    position: sticky; bottom: 16px;
-    margin: 0 auto;
-    width: fit-content; max-width: calc(100% - 32px);
-    display: flex; align-items: center; justify-content: center; gap: 6px;
-    padding: 8px 12px; flex-wrap: wrap;
+/* —— 阅读模式分页器：跳出 stage 滚动容器，固定在 cv_body 底部居中 —— */
+.cv-reader-pager-wrap {
+    position: absolute;
+    left: 0; right: 0; bottom: 16px;
+    display: flex; justify-content: center;
+    pointer-events: none;            /* wrap 不拦截事件 */
+    z-index: 8;
+    transition: transform .2s ease, opacity .2s ease;
+}
+.cv-reader-pager-wrap.is-hidden {
+    transform: translateY(140%);
+    opacity: 0;
+    pointer-events: none;
+}
+.cv-reader-pager {
+    pointer-events: auto;
+    display: inline-flex; align-items: center; justify-content: center;
+    gap: 4px;
+    padding: 6px 10px;
+    max-width: calc(100% - 32px);
     border: 1px solid var(--cv-border, rgba(255,255,255,0.12));
     border-radius: 999px;
-    background: color-mix(in srgb, var(--cv-bg-panel, #1f2230) 75%, transparent);
+    background: color-mix(in srgb, var(--cv-bg-panel, #1f2230) 78%, transparent);
     backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-    box-shadow: 0 8px 24px rgba(0,0,0,0.28);
-    z-index: 5;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.32);
+    flex-wrap: nowrap;
+    white-space: nowrap;
 }
 .cv-pager-btn {
     min-width: 30px; height: 30px; padding: 0 8px;
