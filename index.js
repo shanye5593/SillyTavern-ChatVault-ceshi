@@ -4,7 +4,7 @@
  * https://github.com/shanye5593/SillyTavern-ChatVault
  */
 
-const VERSION = '0.3.22-test';
+const VERSION = '0.3.23-test';
 const STORAGE_KEY = 'st-chatvault-meta';
 const SETTINGS_KEY = 'st-chatvault-settings';
 const PAGE_SIZE = 50;
@@ -1187,6 +1187,15 @@ function processMessageText(text, strip, extract) {
     return applyExtraction(applyStripping(text, strip), extract).trim();
 }
 
+// 极简 Markdown 行内渲染：只处理 **粗体** 和 *斜体*（同行内）
+// 必须在 escapeHtml 之后调用 —— escapeHtml 不动 *，所以可以安全二次替换
+// 设计取舍：跨行不识别、不支持 _ __ ` ~ 链接 等其它语法，避免误伤角色名/路径里的下划线
+function mdInline(escaped) {
+    return escaped
+        .replace(/\*\*([^*\n]+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/(?<!\*)\*(?!\s)([^*\n]+?)(?<!\s)\*(?!\*)/g, '<em>$1</em>');
+}
+
 /* ============================================================
  *  阅读模式（面板内分页阅读全部楼层）
  * ============================================================ */
@@ -1349,7 +1358,7 @@ function renderReader() {
         // 每个非空"行"包成一段，让首行缩进对每段生效（包含连续换行产生的空行也被丢弃）
         const text = m.text
             ? m.text.split(/\n+/).map(s => s.trim()).filter(Boolean)
-                .map(seg => `<p class="cv-msg-p">${escapeHtml(seg)}</p>`).join('')
+                .map(seg => `<p class="cv-msg-p">${mdInline(escapeHtml(seg))}</p>`).join('')
               || '<span class="cv-reader-empty">（空）</span>'
             : '<span class="cv-reader-empty">（空）</span>';
         // user 头像：若聊天 meta 里绑定了 persona 文件名，走 /thumbnail（零附加存储）；否则首字徽章
@@ -1423,6 +1432,8 @@ function bindReaderHeader() {
             readerState.settingsOpen = !!open;
             panel.hidden = !open;
             gear.classList.toggle('is-on', !!open);
+            // v0.3.23-test: 设置面板打开时把分页器藏起来，避免与设置面板底部重叠
+            if (pagerWrap) pagerWrap.classList.toggle('cv-pager-suppressed', !!open);
             if (open) renderReaderSettings(panel);
         };
         gear.onclick = (e) => {
@@ -1880,6 +1891,9 @@ function renderReaderSettings(panel) {
         panel.hidden = true;
         const gear = document.getElementById('cv_reader_gear');
         if (gear) gear.classList.remove('is-on');
+        // v0.3.23-test: 关闭设置 → 让分页器恢复
+        const pw = document.querySelector('.cv-reader-pager-wrap');
+        if (pw) pw.classList.remove('cv-pager-suppressed');
     };
 }
 
