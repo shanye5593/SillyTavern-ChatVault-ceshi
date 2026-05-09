@@ -1029,6 +1029,7 @@
 .cv-reader-fab-gear { right: 16px; }
 
 /* 设置抽屉：从右上角下拉，独立悬浮，不顶开正文 */
+.cv-reader-settings[hidden] { display: none !important; }   /* 类选择器的 display:flex 会覆盖 [hidden] 的 display:none，必须强制 */
 .cv-reader-stage > .cv-reader-settings {
     position: absolute; top: 60px; right: 16px; z-index: 7;
     width: min(420px, calc(100% - 32px));
