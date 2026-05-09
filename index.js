@@ -1135,6 +1135,7 @@ const readerState = {
     fileName: '',
     arr: null,            // 完整聊天数组（含 metadata）
     page: 1,
+    settingsOpen: false,
 };
 
 async function enterReader(character, fileName) {
@@ -1156,6 +1157,7 @@ async function enterReader(character, fileName) {
 function exitReader() {
     readerState.active = false;
     readerState.arr = null;
+    readerState.settingsOpen = false;
     render();
 }
 
@@ -1249,6 +1251,11 @@ function renderReader() {
         + pagerHtml;
     bindReaderHeader();
     bindReaderPager(totalPages);
+    // 保留设置面板的开合状态（避免改一项配置就把面板关掉）
+    if (readerState.settingsOpen) {
+        const panel = document.getElementById('cv_reader_settings');
+        if (panel) { panel.hidden = false; renderReaderSettings(panel); }
+    }
     body.scrollTop = 0;
 }
 
@@ -1276,8 +1283,10 @@ function bindReaderHeader() {
     const panel = document.getElementById('cv_reader_settings');
     if (gear && panel) {
         gear.onclick = () => {
-            if (panel.hidden) renderReaderSettings(panel);
-            panel.hidden = !panel.hidden;
+            const willOpen = panel.hidden;
+            if (willOpen) renderReaderSettings(panel);
+            panel.hidden = !willOpen;
+            readerState.settingsOpen = willOpen;
         };
     }
 }
