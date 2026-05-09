@@ -1201,6 +1201,38 @@
     background: color-mix(in srgb, var(--cv-text-primary, #fff) 10%, transparent);
 }
 
+/* user 头像绑定 */
+.cv-ua-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 6px 0 2px;
+}
+.cv-ua-preview {
+    width: 56px; height: 56px; border-radius: 50%;
+    overflow: hidden; flex-shrink: 0;
+    border: 1px solid var(--cv-border, rgba(255,255,255,0.14));
+    background: color-mix(in srgb, var(--cv-text-primary, #fff) 6%, transparent);
+    display: flex; align-items: center; justify-content: center;
+}
+.cv-ua-preview img { width: 100%; height: 100%; object-fit: cover; }
+.cv-ua-empty { font-size: 11px; opacity: .55; text-align: center; }
+.cv-ua-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.cv-ua-status { font-size: 12px; opacity: .8; }
+.cv-ua-status code {
+    font-size: 11px; padding: 1px 5px; border-radius: 4px;
+    background: color-mix(in srgb, var(--cv-text-primary, #fff) 10%, transparent);
+    word-break: break-all;
+}
+.cv-ua-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.cv-ua-actions .cv-btn { font-size: 11px; padding: 4px 10px; }
+.cv-btn-danger {
+    border-color: color-mix(in srgb, #e25b5b 40%, var(--cv-border, rgba(255,255,255,0.14)));
+    color: #e88080;
+}
+.cv-btn-danger:hover:not(:disabled) {
+    background: color-mix(in srgb, #e25b5b 12%, transparent);
+}
+.cv-btn:disabled { opacity: .4; cursor: not-allowed; }
+
 /* 底部留白，给浮动分页器让位 */
 .cv-reader-bottom-spacer { height: 96px; }
 
