@@ -4,7 +4,7 @@
  * https://github.com/shanye5593/SillyTavern-ChatVault
  */
 
-const VERSION = '0.3.12-test';
+const VERSION = '0.3.13-test';
 const STORAGE_KEY = 'st-chatvault-meta';
 const SETTINGS_KEY = 'st-chatvault-settings';
 // 本地缓存（瞬开模式）专用前缀；清理函数只动这个前缀，绝不波及其他 key
@@ -653,6 +653,7 @@ async function loadAll({ force = false } = {}) {
         try {
             await _headersReady;
             const fresh = await fetchAllCharacters({ forceApi: cacheEnabled });
+            if (loadToken !== loadAllToken || !panelEl) return; // 已被新一轮加载或关闭抢占
             if (computeFingerprint(fresh) === cacheFingerprint) {
                 charactersCache = fresh;
                 setStatus('');
@@ -669,6 +670,7 @@ async function loadAll({ force = false } = {}) {
             const persisted = readPersistedCache();
             if (persisted && persisted.fingerprint && persisted.charactersCache && persisted.chatsByAvatar) {
                 const fresh = await fetchAllCharacters({ forceApi: true });
+                if (loadToken !== loadAllToken || !panelEl) return; // 已被新一轮加载或关闭抢占
                 if (computeFingerprint(fresh) === persisted.fingerprint) {
                     charactersCache = fresh;
                     chatsByAvatar = persisted.chatsByAvatar;
@@ -757,6 +759,14 @@ function forceRefreshAll() {
     errorsByAvatar = {};
     if (loadSettings().cacheEnabled) clearOwnCache();
     loadAll({ force: true });
+}
+
+// 插件自己动了聊天（重命名/删除/导入）后调用：让下次开面板自动失效缓存。
+// 注意 chat_size/date_last_chat 在某些 ST 版本里可能不会随重命名等操作同步更新，
+// 所以不能只依赖指纹 —— 改完直接把指纹和持久化缓存一起作废，最稳。
+function invalidateCacheAfterMutation() {
+    cacheFingerprint = null;
+    if (loadSettings().cacheEnabled) clearOwnCache();
 }
 
 /* ============================================================
@@ -2110,6 +2120,7 @@ async function importChatToCharacter(character, file) {
         }
         toastr.success(`已导入到「${character.name || '当前角色'}」`);
         setStatus('✓ 已导入');
+        invalidateCacheAfterMutation();
         // 刷新该角色的聊天列表
         await reloadCharacterChats(character);
         render();
@@ -2191,6 +2202,7 @@ function openEditModal(character, fileName) {
             try {
                 setStatus('正在重命名文件…');
                 await renameChat(character.avatar, fileName, newFile);
+                invalidateCacheAfterMutation();
                 // 更新缓存
                 const list = chatsByAvatar[character.avatar] || [];
                 const item = list.find(c => c.file_name === fileName);
@@ -2305,6 +2317,7 @@ async function handleDelete(character, fileName) {
     try {
         setStatus('正在删除…');
         await deleteChat(character.avatar, fileName);
+        invalidateCacheAfterMutation();
         chatsByAvatar[character.avatar] = (chatsByAvatar[character.avatar] || [])
             .filter(c => c.file_name !== fileName);
         // 清掉本地 meta
