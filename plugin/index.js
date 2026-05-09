@@ -4,7 +4,7 @@
  * https://github.com/shanye5593/SillyTavern-ChatVault
  */
 
-const VERSION = '0.3.13-test';
+const VERSION = '0.3.14-test';
 const STORAGE_KEY = 'st-chatvault-meta';
 const SETTINGS_KEY = 'st-chatvault-settings';
 // 本地缓存（瞬开模式）专用前缀；清理函数只动这个前缀，绝不波及其他 key
@@ -1903,7 +1903,25 @@ function renderReaderSettings(panel) {
             <div class="cv-reader-settings-hint">改完会立即重排当前页面</div>
         </div>
     `;
-    const repaint = () => { readerState._processed = null; renderReader(); };
+    // repaint 必须保留滚动位置 —— 阅读区和设置面板都不能回顶。
+    // 默认 renderReader 末尾会把 stage/body.scrollTop 归 0（那是为翻页设计的），
+    // 这里调用前后做一次快照 + 恢复。
+    const repaint = () => {
+        const stageBefore = document.querySelector('.cv-reader-stage');
+        const bodyBefore = document.getElementById('cv_body');
+        const settingsBefore = document.getElementById('cv_reader_settings');
+        const sStage = stageBefore ? stageBefore.scrollTop : 0;
+        const sBody = bodyBefore ? bodyBefore.scrollTop : 0;
+        const sSettings = settingsBefore ? settingsBefore.scrollTop : 0;
+        readerState._processed = null;
+        renderReader();
+        const stageAfter = document.querySelector('.cv-reader-stage');
+        const bodyAfter = document.getElementById('cv_body');
+        const settingsAfter = document.getElementById('cv_reader_settings');
+        if (stageAfter) stageAfter.scrollTop = sStage;
+        if (bodyAfter) bodyAfter.scrollTop = sBody;
+        if (settingsAfter) settingsAfter.scrollTop = sSettings;
+    };
     mountRulesEditor(panel.querySelector('#cv_r_rules_holder'), {
         prefix: 'cv_r',
         stripPath: ['readStrip'],
