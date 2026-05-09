@@ -4,7 +4,7 @@
  * https://github.com/shanye5593/SillyTavern-ChatVault
  */
 
-const VERSION = '0.3.15-test';
+const VERSION = '0.3.16-test';
 const STORAGE_KEY = 'st-chatvault-meta';
 const SETTINGS_KEY = 'st-chatvault-settings';
 // 本地缓存（瞬开模式）专用前缀；清理函数只动这个前缀，绝不波及其他 key
@@ -636,9 +636,11 @@ function setStatus(text) {
 
 // 用 chat_size + date_last_chat 作为指纹：聊天增/删/改、消息收发
 // 都会让酒馆更新这两个字段。指纹一致 → 全局没有动过 → 可走缓存。
+// 注意：c.chat 是"当前活跃聊天文件名"，仅切换聊天时也会变，但跟我们
+// 缓存的"聊天档案列表"是否准确无关，所以**不能**纳入指纹。
 function computeFingerprint(chars) {
     return (chars || [])
-        .map(c => `${c.avatar}|${c.chat_size ?? ''}|${c.date_last_chat ?? ''}|${c.chat ?? ''}`)
+        .map(c => `${c.avatar}|${c.chat_size ?? ''}|${c.date_last_chat ?? ''}`)
         .sort()
         .join('\n');
 }
