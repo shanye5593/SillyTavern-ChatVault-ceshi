@@ -1500,14 +1500,16 @@
 }
 .cv-export-rules-body .cv-strip-box { background: transparent; }
 
-/* v0.3.14: 摘取规则 modal 与提示文字 */
+/* v0.3.14: 摘取规则 modal 与提示文字
+   v0.3.24-test: 改用三套主题都已定义的 --cv-text-tertiary / --cv-bg-elev
+   原本的 --cv-text-dim / --cv-fold-bg 三套主题里都没定义，fallback rgba(255,255,255,0.6) 在 light/coffee 下白底白字看不见 */
 .cv-export-hint,
 .cv-rules-modal-hint {
     margin: 10px 0 4px;
     padding: 8px 12px;
     border-radius: 8px;
-    background: var(--cv-fold-bg, rgba(255,255,255,0.04));
-    color: var(--cv-text-dim, rgba(255,255,255,0.6));
+    background: color-mix(in srgb, var(--cv-text-tertiary, #6b7280) 8%, transparent);
+    color: var(--cv-text-secondary);
     font-size: 12px;
     line-height: 1.5;
 }
