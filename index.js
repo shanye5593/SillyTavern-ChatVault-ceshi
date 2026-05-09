@@ -28,8 +28,22 @@ const DEFAULT_EXTRACT = {
 };
 const DEFAULT_USER_RULES = {
     enabled: false,
-    strip:   { ...DEFAULT_STRIP },
-    extract: { ...DEFAULT_EXTRACT },
+    strip: {
+        thinking: false, think: false, htmlComment: false,
+        selfClosing: false, mdHeaders: false,
+        // 默认剥离：<recall>、<supplement>（记忆/补充类常见标签）
+        custom: [
+            { open: '<recall>',     close: '</recall>'     },
+            { open: '<supplement>', close: '</supplement>' },
+        ],
+    },
+    extract: {
+        content: false, reply: false,
+        // 默认提取：<本轮用户输入>
+        custom: [
+            { open: '<本轮用户输入>', close: '</本轮用户输入>' },
+        ],
+    },
 };
 const DEFAULT_SETTINGS = {
     enabled: true,
@@ -41,9 +55,13 @@ const DEFAULT_SETTINGS = {
     readStrip:   { ...DEFAULT_STRIP },
     readExtract: { ...DEFAULT_EXTRACT },
     // user 消息单独的规则（覆盖上面这组）
-    userReadRules: { ...DEFAULT_USER_RULES },
-    // 分页器模式: 'always' = 常驻底部, 'autoHide' = 下滑隐藏/上滑出现
+    userReadRules: JSON.parse(JSON.stringify(DEFAULT_USER_RULES)),
+    // 分页器模式: 'always' = 常驻底部, 'autoHide' = 下滑隐藏/上滑出现（同时控制悬浮按钮）
     readerPagerMode: 'autoHide',
+    // 阅读模式正文字号 (px)
+    readerFontSize: 15,
+    // 阅读模式段落首行缩进
+    readerIndent: false,
 };
 
 function loadSettings() {
@@ -1189,6 +1207,7 @@ function exitReader() {
 function readerCfg() {
     const cfg = loadSettings();
     const u = { ...DEFAULT_USER_RULES, ...(cfg.userReadRules || {}) };
+    const fs = Number(cfg.readerFontSize);
     return {
         strip:   { ...DEFAULT_STRIP,   ...(cfg.readStrip   || {}) },
         extract: { ...DEFAULT_EXTRACT, ...(cfg.readExtract || {}) },
@@ -1198,6 +1217,8 @@ function readerCfg() {
             extract: { ...DEFAULT_EXTRACT, ...(u.extract || {}) },
         },
         pagerMode: cfg.readerPagerMode === 'always' ? 'always' : 'autoHide',
+        fontSize: (Number.isFinite(fs) && fs >= 12 && fs <= 24) ? fs : 15,
+        indent: !!cfg.readerIndent,
     };
 }
 
@@ -1210,22 +1231,24 @@ function renderReader() {
     const avatarUrl = character.avatar ? `/thumbnail?type=avatar&file=${encodeURIComponent(character.avatar)}` : '';
     const cfgPre = readerCfg();
 
-    // 浮动按钮（绝对定位、不占文档流），不再渲染顶栏
-    const floatHtml = `
+    // 悬浮覆层（按钮 + 设置面板 + 分页器都从 stage 移出，作为 cv_body 的直接子节点）
+    // 这样它们才真正"悬浮"——不会随 stage 滚动消失
+    const stageStyle = `--cv-reader-font-size:${cfgPre.fontSize}px`;
+    const stageOpen = `<div class="cv-reader-stage" data-pager-mode="${cfgPre.pagerMode}" data-indent="${cfgPre.indent ? '1' : '0'}" style="${stageStyle}"><div class="cv-reader-column">`;
+    const stageClose = `</div></div>`;
+    const overlayHtml = `
         <button class="cv-reader-fab cv-reader-fab-back" id="cv_reader_back" type="button" title="返回列表">${ICONS.arrowL}</button>
         <button class="cv-reader-fab cv-reader-fab-gear" id="cv_reader_gear" type="button" title="阅读模式设置">${ICONS.gear}</button>
         <div class="cv-reader-settings" id="cv_reader_settings" hidden></div>
     `;
-    const stageOpen = `<div class="cv-reader-stage" data-pager-mode="${cfgPre.pagerMode}">${floatHtml}<div class="cv-reader-column">`;
-    const stageClose = `</div></div>`;
 
     if (!arr) {
-        body.innerHTML = stageOpen + `<div class="cv-reader-loading">正在加载完整聊天…</div>` + stageClose;
+        body.innerHTML = stageOpen + `<div class="cv-reader-loading">正在加载完整聊天…</div>` + stageClose + overlayHtml;
         bindReaderHeader();
         return;
     }
     if (arr.error) {
-        body.innerHTML = stageOpen + `<div class="cv-empty">加载失败：${escapeHtml(arr.error)}</div>` + stageClose;
+        body.innerHTML = stageOpen + `<div class="cv-empty">加载失败：${escapeHtml(arr.error)}</div>` + stageClose + overlayHtml;
         bindReaderHeader();
         return;
     }
@@ -1269,7 +1292,12 @@ function renderReader() {
 
     const cardHtml = slice.map(m => {
         const who = escapeHtml(m.who);
-        const text = m.text ? escapeHtml(m.text).replace(/\n/g, '<br>') : '<span class="cv-reader-empty">（空）</span>';
+        // 把消息按段落（连续换行视作分段）拆成 <p>，单换行保留为 <br>，便于首行缩进
+        const text = m.text
+            ? m.text.split(/\n{2,}/).map(seg =>
+                `<p class="cv-msg-p">${escapeHtml(seg.trim()).replace(/\n/g, '<br>')}</p>`
+              ).join('')
+            : '<span class="cv-reader-empty">（空）</span>';
         const av = m.is_user ? '' : avatarUrl;
         const avHtml = av
             ? `<img class="cv-reader-msg-avatar" src="${av}" onerror="this.style.visibility='hidden'" alt=""/>`
@@ -1292,6 +1320,7 @@ function renderReader() {
         + `<div class="cv-reader-list">${cardHtml || '<div class="cv-empty">没有可显示的内容</div>'}</div>`
         + `<div class="cv-reader-bottom-spacer"></div>`
         + stageClose
+        + overlayHtml
         + (pagerHtml ? `<div class="cv-reader-pager-wrap" data-pager-mode="${cfgPre.pagerMode}">${pagerHtml}</div>` : '');
     bindReaderHeader();
     bindReaderPager(totalPages);
@@ -1323,10 +1352,13 @@ function renderReaderPager(page, totalPages, total) {
 
 function bindReaderHeader() {
     const back = document.getElementById('cv_reader_back');
-    if (back) back.onclick = exitReader;
     const gear = document.getElementById('cv_reader_gear');
     const panel = document.getElementById('cv_reader_settings');
     const stage = document.querySelector('.cv-reader-stage');
+    const pagerWrap = document.querySelector('.cv-reader-pager-wrap');
+    // 所有"悬浮"元素 —— 自动隐藏时它们会一起淡出/出现
+    const overlays = [back, gear, pagerWrap].filter(Boolean);
+    if (back) back.onclick = (e) => { e.stopPropagation(); exitReader(); };
     if (gear && panel) {
         const setOpen = (open) => {
             readerState.settingsOpen = !!open;
@@ -1338,41 +1370,34 @@ function bindReaderHeader() {
             e.stopPropagation();
             setOpen(!readerState.settingsOpen);
         };
-        // 点击设置面板内部不冒泡（避免触发外部关闭）
         panel.onclick = (e) => e.stopPropagation();
-        // 点击 stage 任意空白处关闭设置
         if (stage) {
             stage.onclick = () => {
                 if (readerState.settingsOpen) setOpen(false);
             };
         }
     }
-    // 分页器自动隐藏（依赖滚动方向）
-    const pagerWrap = document.querySelector('.cv-reader-pager-wrap');
-    if (stage && pagerWrap) {
-        const mode = pagerWrap.dataset.pagerMode;
+    // 自动隐藏：分页器 + 返回键 + 齿轮 共用一套滚动方向逻辑
+    if (stage) {
+        const mode = stage.dataset.pagerMode || (pagerWrap && pagerWrap.dataset.pagerMode);
         if (mode === 'autoHide') {
             let lastY = stage.scrollTop;
             let acc = 0;
+            const hide = () => overlays.forEach(el => el.classList.add('is-hidden'));
+            const show = () => overlays.forEach(el => el.classList.remove('is-hidden'));
             stage.addEventListener('scroll', () => {
                 const y = stage.scrollTop;
                 const dy = y - lastY;
                 lastY = y;
                 if (Math.abs(dy) < 2) return;
                 acc = (Math.sign(dy) === Math.sign(acc)) ? acc + dy : dy;
-                if (acc > 24) {
-                    pagerWrap.classList.add('is-hidden');
-                    acc = 0;
-                } else if (acc < -24) {
-                    pagerWrap.classList.remove('is-hidden');
-                    acc = 0;
-                }
-                if (stage.scrollHeight - y - stage.clientHeight < 80) {
-                    pagerWrap.classList.remove('is-hidden');
-                }
+                if (acc > 24)       { hide(); acc = 0; }
+                else if (acc < -24) { show(); acc = 0; }
+                if (stage.scrollHeight - y - stage.clientHeight < 80) show();
+                if (y < 40) show();
             }, { passive: true });
         } else {
-            pagerWrap.classList.remove('is-hidden');
+            overlays.forEach(el => el.classList.remove('is-hidden'));
         }
     }
 }
@@ -1451,19 +1476,28 @@ function renderReaderSettings(panel) {
                 </div>
             </div>
             <div class="cv-strip-box">
-                <div class="cv-strip-title">分页器显示</div>
+                <div class="cv-strip-title">悬浮按钮 · 分页器显示</div>
+                <div class="cv-field-hint">控制返回键、齿轮、跳转分页器三个悬浮元素的可见行为。</div>
                 <div class="cv-reader-style-row">
                     <label class="cv-reader-style-opt ${curPager==='autoHide'?'is-on':''}">
                         <input type="radio" name="cv_r_pager" value="autoHide" ${curPager==='autoHide'?'checked':''}/>
                         <span class="cv-reader-style-name">滚动自动隐藏</span>
-                        <span class="cv-reader-style-desc">下滑藏 · 上滑出</span>
+                        <span class="cv-reader-style-desc">下滑藏 · 上滑出 · 触底显</span>
                     </label>
                     <label class="cv-reader-style-opt ${curPager==='always'?'is-on':''}">
                         <input type="radio" name="cv_r_pager" value="always" ${curPager==='always'?'checked':''}/>
-                        <span class="cv-reader-style-name">常驻底部</span>
-                        <span class="cv-reader-style-desc">始终悬浮可见</span>
+                        <span class="cv-reader-style-name">常驻可见</span>
+                        <span class="cv-reader-style-desc">始终悬浮显示</span>
                     </label>
                 </div>
+            </div>
+            <div class="cv-strip-box">
+                <div class="cv-strip-title">正文字号</div>
+                <div class="cv-reader-fontsize-row">
+                    <input type="range" id="cv_r_fontsize" min="13" max="22" step="0.5" value="${cfg.readerFontSize || 15}"/>
+                    <span class="cv-reader-fontsize-val" id="cv_r_fontsize_val">${cfg.readerFontSize || 15}px</span>
+                </div>
+                ${sw('cv_r_indent', !!cfg.readerIndent, '段落首行缩进 2 字')}
             </div>
             <div class="cv-strip-box">
                 <div class="cv-strip-title">剥离（默认 · 适用于 AI / 角色消息）</div>
@@ -1619,6 +1653,32 @@ function renderReaderSettings(panel) {
             renderReader();
         };
     });
+
+    // 字号滑块（实时调整 stage 上的 CSS 变量，无需重排）
+    const fsInput = document.getElementById('cv_r_fontsize');
+    const fsVal   = document.getElementById('cv_r_fontsize_val');
+    if (fsInput) {
+        const apply = (save) => {
+            const v = Number(fsInput.value) || 15;
+            if (fsVal) fsVal.textContent = v + 'px';
+            const stage = document.querySelector('.cv-reader-stage');
+            if (stage) stage.style.setProperty('--cv-reader-font-size', v + 'px');
+            if (save) {
+                const c = loadSettings();
+                saveSettings({ ...c, readerFontSize: v });
+            }
+        };
+        fsInput.oninput  = () => apply(false);
+        fsInput.onchange = () => apply(true);
+    }
+    // 首行缩进开关
+    const indentSw = document.getElementById('cv_r_indent');
+    if (indentSw) indentSw.onchange = () => {
+        const c = loadSettings();
+        saveSettings({ ...c, readerIndent: indentSw.checked });
+        const stage = document.querySelector('.cv-reader-stage');
+        if (stage) stage.dataset.indent = indentSw.checked ? '1' : '0';
+    };
 
     // × 关闭按钮
     const closeBtn = document.getElementById('cv_r_close');
