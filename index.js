@@ -1577,9 +1577,16 @@ function mountRulesEditor(host, opts) {
             };
             // 失焦时让外部重排正文。延迟到下一个事件循环，
             // 避免 blur 同步重渲 DOM 把刚刚触发 blur 的那个 click（删/加/开关）吞掉。
-            const reflow = () => setTimeout(repaint, 0);
-            openEl.oninput = saveOnly;  openEl.onblur = reflow;
-            closeEl.oninput = saveOnly; closeEl.onblur = reflow;
+            // 关键：仅在 focus 时和 blur 时值不同才 repaint —— 否则只是
+            // "点了一下框又点回屏幕"也会触发重渲，阅读模式下导致正文回顶。
+            let focusVal = '';
+            const onFocus = (el) => () => { focusVal = el.value; };
+            const onBlur = (el) => () => {
+                if (el.value === focusVal) return;
+                setTimeout(repaint, 0);
+            };
+            openEl.oninput  = saveOnly; openEl.onfocus  = onFocus(openEl);  openEl.onblur  = onBlur(openEl);
+            closeEl.oninput = saveOnly; closeEl.onfocus = onFocus(closeEl); closeEl.onblur = onBlur(closeEl);
             row.querySelector('.cv-strip-del').onclick = () => {
                 mutateRule(path, isStrip, r => { r.custom = (r.custom || []).filter((_, k) => k !== i); });
                 renderList(listId, addBtnId, path, isStrip);
