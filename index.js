@@ -4,7 +4,7 @@
  * https://github.com/shanye5593/SillyTavern-ChatVault
  */
 
-const VERSION = '0.3.17-test';
+const VERSION = '0.3.18-test';
 const STORAGE_KEY = 'st-chatvault-meta';
 const SETTINGS_KEY = 'st-chatvault-settings';
 const PAGE_SIZE = 50;
