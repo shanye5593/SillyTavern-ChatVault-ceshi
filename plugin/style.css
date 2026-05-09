@@ -1380,3 +1380,54 @@
     .cv-pager-page input { width: 44px; }
     .cv-reader-style-row { flex-direction: column; }
 }
+
+/* ============================================================
+ *  导出 modal —— 卡片式两个选项
+ * ============================================================ */
+.cv-export-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 10px;
+}
+.cv-export-card {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    padding: 14px 14px 12px;
+    border-radius: 10px;
+    border: 1px solid var(--cv-border, rgba(255,255,255,.1));
+    background: var(--cv-bg-soft, rgba(255,255,255,.03));
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: border-color .15s, background .15s, transform .05s;
+}
+.cv-export-card:hover {
+    border-color: var(--cv-accent, #6e8efb);
+    background: color-mix(in srgb, var(--cv-accent, #6e8efb) 8%, transparent);
+}
+.cv-export-card:active { transform: scale(.99); }
+.cv-export-card-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px; height: 28px;
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--cv-accent, #6e8efb) 14%, transparent);
+    color: var(--cv-accent, #6e8efb);
+}
+.cv-export-card-title {
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: .3px;
+}
+.cv-export-card-desc {
+    font-size: 12px;
+    line-height: 1.5;
+    opacity: .75;
+}
+@media (max-width: 480px) {
+    .cv-export-grid { grid-template-columns: 1fr; }
+}
