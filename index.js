@@ -19,11 +19,14 @@ const DEFAULT_STRIP = {
     htmlComment: true,
     selfClosing: false,        // <PascalCaseTag ... /> 这种单标签前端占位
     mdHeaders: false,          // ### 正文 这种 markdown 标题行
+    recall: false,             // <recall>...</recall>（user 默认会开）
+    supplement: false,         // <supplement>...</supplement>（user 默认会开）
     custom: [],
 };
 const DEFAULT_EXTRACT = {
     content: false,           // <content>...</content>
     reply: false,             // <reply>...</reply>
+    userInput: false,         // <本轮用户输入>...</本轮用户输入>（user 默认会开）
     custom: [],               // [{open, close}, ...]
 };
 const DEFAULT_USER_RULES = {
@@ -31,18 +34,13 @@ const DEFAULT_USER_RULES = {
     strip: {
         thinking: false, think: false, htmlComment: false,
         selfClosing: false, mdHeaders: false,
-        // 默认剥离：<recall>、<supplement>（记忆/补充类常见标签）
-        custom: [
-            { open: '<recall>',     close: '</recall>'     },
-            { open: '<supplement>', close: '</supplement>' },
-        ],
+        recall: true, supplement: true,        // 滑块默认打开
+        custom: [],
     },
     extract: {
         content: false, reply: false,
-        // 默认提取：<本轮用户输入>
-        custom: [
-            { open: '<本轮用户输入>', close: '</本轮用户输入>' },
-        ],
+        userInput: true,                       // 滑块默认打开
+        custom: [],
     },
 };
 const DEFAULT_SETTINGS = {
@@ -916,7 +914,7 @@ function renderCard(character, chat, hideCharName = false) {
                     </div>
                     <div class="cv-actions">
                         <button class="cv-act cv-star ${starred ? 'is-on' : ''}" data-act="star" title="收藏">${ICONS.star}</button>
-                        <button class="cv-act" data-act="edit" title="编辑标题/标签/导出">${ICONS.edit}</button>
+                        <button class="cv-act" data-act="edit" title="编辑标题/标签">${ICONS.edit}</button>
                         <button class="cv-act cv-act-delete" data-act="delete" title="删除">${ICONS.trash}</button>
                         <span class="cv-act-divider"></span>
                         <button class="cv-act cv-act-jump ${active ? 'is-active' : ''}" data-act="open" title="跳转到此聊天"><span>${jumpLabel}</span>${ICONS.jump}</button>
@@ -929,8 +927,7 @@ function renderCard(character, chat, hideCharName = false) {
                 <div class="cv-preview is-loading" data-preview="1">加载预览中…</div>
                 <div class="cv-fold">
                     <button class="cv-fold-btn cv-fold-primary" data-act="reader" type="button">${ICONS.book}<span>阅读模式</span></button>
-                    <button class="cv-fold-btn" data-act="export-jsonl" type="button">${ICONS.download}<span>导出 jsonl</span></button>
-                    <button class="cv-fold-btn" data-act="export-txt" type="button">${ICONS.download}<span>导出 txt</span></button>
+                    <button class="cv-fold-btn" data-act="export" type="button">${ICONS.download}<span>导出</span></button>
                 </div>
             </div>
         </div>
@@ -989,8 +986,7 @@ function bindCardEvents() {
                 e.stopPropagation();
                 const act = btn.dataset.act;
                 if (act === 'reader') enterReader(character, fileName);
-                else if (act === 'export-jsonl') exportChatJsonl(character, fileName);
-                else if (act === 'export-txt')   exportChatTxt(character, fileName);
+                else if (act === 'export') openExportModal(character, fileName);
             };
         });
 
@@ -1004,12 +1000,6 @@ function bindCardEvents() {
                 if (c !== card) c.classList.remove('is-folded-open');
             });
             card.classList.toggle('is-folded-open', open);
-        };
-
-        card.ondblclick = (e) => {
-            if (e.target.closest('.cv-actions')) return;
-            if (e.target.closest('.cv-fold')) return;
-            jumpToChat(character, fileName);
         };
     });
 
@@ -1119,6 +1109,8 @@ function applyStripping(text, strip) {
     if (strip.thinking) out = out.replace(/<thinking[^>]*>[\s\S]*?<\/thinking>/gi, '');
     if (strip.think)    out = out.replace(/<think[^>]*>[\s\S]*?<\/think>/gi, '');
     if (strip.htmlComment) out = out.replace(/<!--[\s\S]*?-->/g, '');
+    if (strip.recall)      out = out.replace(/<recall[^>]*>[\s\S]*?<\/recall>/gi, '');
+    if (strip.supplement)  out = out.replace(/<supplement[^>]*>[\s\S]*?<\/supplement>/gi, '');
     // 自闭合占位标签 <StatusPlaceHolderImpl/>、<MemoryCard ... /> 等（PascalCase 开头，避免误伤 <br/> <img/>）
     if (strip.selfClosing) out = out.replace(/<[A-Z][A-Za-z0-9_-]*\b[^>]*\/\s*>/g, '');
     // markdown 标题行：### 正文 / ## 思考 等（整行去掉）
@@ -1138,8 +1130,9 @@ function applyExtraction(text, extract) {
     if (typeof text !== 'string' || !text) return text || '';
     if (!extract) return text;
     const tags = [];
-    if (extract.content) tags.push({ open: '<content>',  close: '</content>'  });
-    if (extract.reply)   tags.push({ open: '<reply>',    close: '</reply>'    });
+    if (extract.content)   tags.push({ open: '<content>',      close: '</content>'      });
+    if (extract.reply)     tags.push({ open: '<reply>',        close: '</reply>'        });
+    if (extract.userInput) tags.push({ open: '<本轮用户输入>', close: '</本轮用户输入>' });
     if (Array.isArray(extract.custom)) {
         for (const p of extract.custom) if (p?.open && p?.close) tags.push(p);
     }
@@ -1174,6 +1167,9 @@ const readerState = {
 
 async function enterReader(character, fileName) {
     if (!character || !fileName) return;
+    // 进入阅读模式前记录列表滚动位置，退出后恢复，避免回滚到顶
+    const bodyEl = document.getElementById('cv_body');
+    readerState.bodyScrollBefore = bodyEl ? bodyEl.scrollTop : 0;
     readerState.active = true;
     readerState.character = character;
     readerState.fileName = fileName;
@@ -1195,6 +1191,7 @@ async function enterReader(character, fileName) {
 }
 
 function exitReader() {
+    const saved = readerState.bodyScrollBefore || 0;
     readerState.active = false;
     readerState.arr = null;
     readerState._processed = null;
@@ -1203,6 +1200,11 @@ function exitReader() {
     const panel = document.getElementById('chatvault_panel');
     if (panel) panel.classList.remove('cv-in-reader');
     render();
+    // 列表 DOM 重建后恢复滚动位置（同步执行已足够，但 RAF 更稳）
+    requestAnimationFrame(() => {
+        const body = document.getElementById('cv_body');
+        if (body) body.scrollTop = saved;
+    });
 }
 
 function readerCfg() {
@@ -1594,15 +1596,20 @@ function renderReaderSettings(panel) {
                         <span class="cv-switch-track"><span class="cv-switch-thumb"></span></span>
                     </span>
                 </label>
-                <div class="cv-field-hint">开启后，user 消息按下面这组规则处理（覆盖默认规则）。user 消息一般没有思考标签，所以这里只保留自定义对。</div>
+                <div class="cv-field-hint">开启后，user 消息按下面这组规则处理（覆盖默认规则）。常见 user 区噪音已做成滑块，需要更多可加自定义对。</div>
                 <div class="cv-user-rules-body" ${userR.enabled?'':'hidden'}>
                     <div class="cv-strip-subbox">
-                        <div class="cv-strip-subtitle">user · 剥离（自定义对）</div>
+                        <div class="cv-strip-subtitle">user · 剥离</div>
+                        ${sw('cv_r_us_recall',     ustrip.recall,     '&lt;recall&gt;…&lt;/recall&gt;')}
+                        ${sw('cv_r_us_supplement', ustrip.supplement, '&lt;supplement&gt;…&lt;/supplement&gt;')}
+                        <div class="cv-strip-custom-title">自定义剥离对</div>
                         <div id="cv_r_us_list"></div>
                         <button class="cv-btn cv-strip-add" id="cv_r_us_add" type="button">+ 添加</button>
                     </div>
                     <div class="cv-strip-subbox">
-                        <div class="cv-strip-subtitle">user · 提取（自定义对）</div>
+                        <div class="cv-strip-subtitle">user · 提取</div>
+                        ${sw('cv_r_ue_userInput', uextract.userInput, '&lt;本轮用户输入&gt;…&lt;/本轮用户输入&gt;')}
+                        <div class="cv-strip-custom-title">自定义提取对</div>
                         <div id="cv_r_ue_list"></div>
                         <button class="cv-btn cv-strip-add" id="cv_r_ue_add" type="button">+ 添加</button>
                     </div>
@@ -1678,15 +1685,17 @@ function renderReaderSettings(panel) {
     renderList('cv_r_ue_list', 'cv_r_ue_add', ['userReadRules', 'extract'], false);
 
     // 开关 → [id, path, key, isStrip]
-    // user 区不再有滑块开关（user 消息没有思考/HTML 注释/markdown 标题等场景），只保留自定义对
     const flagMap = [
-        ['cv_r_s_thinking',   ['readStrip'],   'thinking',    true],
-        ['cv_r_s_think',      ['readStrip'],   'think',       true],
-        ['cv_r_s_html',       ['readStrip'],   'htmlComment', true],
-        ['cv_r_s_self',       ['readStrip'],   'selfClosing', true],
-        ['cv_r_s_md',         ['readStrip'],   'mdHeaders',   true],
-        ['cv_r_e_content',    ['readExtract'], 'content',     false],
-        ['cv_r_e_reply',      ['readExtract'], 'reply',       false],
+        ['cv_r_s_thinking',     ['readStrip'],                'thinking',    true],
+        ['cv_r_s_think',        ['readStrip'],                'think',       true],
+        ['cv_r_s_html',         ['readStrip'],                'htmlComment', true],
+        ['cv_r_s_self',         ['readStrip'],                'selfClosing', true],
+        ['cv_r_s_md',           ['readStrip'],                'mdHeaders',   true],
+        ['cv_r_e_content',      ['readExtract'],              'content',     false],
+        ['cv_r_e_reply',        ['readExtract'],              'reply',       false],
+        ['cv_r_us_recall',      ['userReadRules', 'strip'],   'recall',      true],
+        ['cv_r_us_supplement',  ['userReadRules', 'strip'],   'supplement',  true],
+        ['cv_r_ue_userInput',   ['userReadRules', 'extract'], 'userInput',   false],
     ];
     flagMap.forEach(([id, path, k, isStrip]) => {
         const el = document.getElementById(id);
@@ -1844,18 +1853,33 @@ async function exportChatTxt(character, fileName) {
     setStatus('正在导出 txt…');
     try {
         const arr = await fetchFullChat(character, fileName);
+        // 与阅读模式共用同一套规则（readStrip / readExtract / userReadRules）
         const cfg = loadSettings();
-        const strip = { ...DEFAULT_STRIP, ...(cfg.strip || {}) };
-        const extract = { ...DEFAULT_EXTRACT, ...(cfg.extract || {}) };
+        const strip    = { ...DEFAULT_STRIP,    ...(cfg.readStrip   || {}) };
+        const extract  = { ...DEFAULT_EXTRACT,  ...(cfg.readExtract || {}) };
+        const u        = { ...DEFAULT_USER_RULES, ...(cfg.userReadRules || {}) };
+        const ustrip   = { ...DEFAULT_STRIP,   ...(u.strip   || {}) };
+        const uextract = { ...DEFAULT_EXTRACT, ...(u.extract || {}) };
         const meta = arr[0] || {};
-        const userName = meta.user_name || '用户';
+        // user 名字优先取首条 user 消息的 m.name（与阅读模式一致），避免跨档串名
+        const firstUserMsg = arr.find(m => m && m.is_user);
+        const recordedUserName = (firstUserMsg && firstUserMsg.name && firstUserMsg.name !== 'unused')
+            ? firstUserMsg.name
+            : (meta.user_name && meta.user_name !== 'unused' ? meta.user_name : '');
+        const userName = recordedUserName || '用户';
         const charName = character.name || meta.character_name || '角色';
         const lines = [`# ${charName} × ${userName}`, `# 来源: ${withExt(fileName)}`, ''];
         for (let i = 1; i < arr.length; i++) {
             const m = arr[i];
             if (!m || typeof m.mes !== 'string') continue;
-            const who = m.is_user ? userName : (m.name || charName);
-            const cleaned = processMessageText(m.mes, strip, extract);
+            const isUser = !!m.is_user;
+            const useUser = u.enabled && isUser;
+            const s = useUser ? ustrip   : strip;
+            const e = useUser ? uextract : extract;
+            const who = isUser
+                ? (m.name && m.name !== 'unused' ? m.name : userName)
+                : (m.name || charName);
+            const cleaned = processMessageText(m.mes, s, e);
             if (!cleaned) continue;
             lines.push(`【${who}】`);
             lines.push(cleaned);
@@ -1925,29 +1949,18 @@ async function reloadCharacterChats(character) {
 }
 
 /* ============================================================
- *  编辑 modal （自定义标题 + 标签 + 重命名文件名 + 导出）
+ *  编辑 modal （自定义标题 + 标签 + 重命名文件名）
  * ============================================================ */
 
 function openEditModal(character, fileName) {
     const meta = getMetaFor(character.avatar, fileName);
     const customTitle = meta.customTitle || '';
     const tags = Array.isArray(meta.tags) ? meta.tags : [];
-    const stripCfg = { ...DEFAULT_STRIP, ...(loadSettings().strip || {}) };
-    const extractCfg = { ...DEFAULT_EXTRACT, ...(loadSettings().extract || {}) };
 
     closeModal();
     const wrap = document.createElement('div');
     wrap.className = 'cv-modal-backdrop';
     wrap.id = 'cv_modal';
-    const swRow = (id, checked, label) => `
-        <label class="cv-switch-row">
-            <span class="cv-switch-label">${label}</span>
-            <span class="cv-switch">
-                <input type="checkbox" id="${id}" ${checked ? 'checked' : ''}/>
-                <span class="cv-switch-track"><span class="cv-switch-thumb"></span></span>
-            </span>
-        </label>
-    `;
     wrap.innerHTML = `
         <div class="cv-modal" onclick="event.stopPropagation()">
             <button class="cv-modal-close" id="cv_m_close" type="button" title="关闭">${ICONS.close}</button>
@@ -1967,37 +1980,6 @@ function openEditModal(character, fileName) {
                     <input type="text" id="cv_m_file" value="${escapeHtml(fileName)}" />
                     <div class="cv-field-hint">修改这里会真正在服务器上重命名文件</div>
                 </div>
-
-                <div class="cv-section-divider"></div>
-                <div class="cv-collapse" id="cv_export_collapse">
-                    <button class="cv-collapse-head" type="button" id="cv_export_toggle" aria-expanded="false">
-                        <span>导出聊天</span>
-                        <span class="cv-collapse-chev">${ICONS.chevDown}</span>
-                    </button>
-                    <div class="cv-collapse-body">
-                        <div class="cv-export-row">
-                            <button class="cv-btn" id="cv_m_export_jsonl" type="button">${ICONS.download}<span>jsonl</span></button>
-                            <button class="cv-btn" id="cv_m_export_txt" type="button">${ICONS.download}<span>txt</span></button>
-                        </div>
-                        <div class="cv-strip-box">
-                            <div class="cv-strip-title">导出 txt 时剥离以下标签内的内容</div>
-                            ${swRow('cv_strip_thinking', stripCfg.thinking, '&lt;thinking&gt;…&lt;/thinking&gt;')}
-                            ${swRow('cv_strip_think', stripCfg.think, '&lt;think&gt;…&lt;/think&gt;')}
-                            ${swRow('cv_strip_html', stripCfg.htmlComment, 'HTML 注释 &lt;!-- … --&gt;')}
-                            <div class="cv-strip-custom-title">自定义标签对（每行一对：前 tag + 后 tag，按字面量匹配）</div>
-                            <div id="cv_strip_custom_list"></div>
-                            <button class="cv-btn cv-strip-add" id="cv_strip_add" type="button">+ 添加一项</button>
-                        </div>
-                        <div class="cv-strip-box">
-                            <div class="cv-strip-title">只保留以下标签内的内容（提取，与剥离并存；都没匹配到时保留原文）</div>
-                            ${swRow('cv_extract_content', extractCfg.content, '&lt;content&gt;…&lt;/content&gt;')}
-                            ${swRow('cv_extract_reply',   extractCfg.reply,   '&lt;reply&gt;…&lt;/reply&gt;')}
-                            <div class="cv-strip-custom-title">自定义提取对</div>
-                            <div id="cv_extract_custom_list"></div>
-                            <button class="cv-btn cv-strip-add" id="cv_extract_add" type="button">+ 添加一项</button>
-                        </div>
-                    </div>
-                </div>
             </div>
 
             <div class="cv-modal-actions">
@@ -2009,129 +1991,6 @@ function openEditModal(character, fileName) {
     wrap.onclick = closeModal;
     document.getElementById('chatvault_panel').appendChild(wrap);
     setTimeout(() => document.getElementById('cv_m_title').focus(), 0);
-
-    // ---- 剥离设置：渲染自定义标签对列表 + 持久化 ----
-    const renderCustomList = () => {
-        const list = document.getElementById('cv_strip_custom_list');
-        const cur = (loadSettings().strip || DEFAULT_SETTINGS.strip).custom || [];
-        list.innerHTML = cur.map((p, i) => `
-            <div class="cv-strip-pair" data-i="${i}">
-                <input type="text" class="cv-strip-open"  placeholder="前 tag，例：<details>"  value="${escapeHtml(p.open || '')}" />
-                <input type="text" class="cv-strip-close" placeholder="后 tag，例：</details>" value="${escapeHtml(p.close || '')}" />
-                <button class="cv-strip-del" type="button" title="删除">×</button>
-            </div>
-        `).join('') || '<div class="cv-field-hint">（暂无）</div>';
-        list.querySelectorAll('.cv-strip-pair').forEach(row => {
-            const i = Number(row.dataset.i);
-            const sync = () => {
-                const cfg = loadSettings();
-                const arr = cfg.strip?.custom ? [...cfg.strip.custom] : [];
-                arr[i] = {
-                    open: row.querySelector('.cv-strip-open').value,
-                    close: row.querySelector('.cv-strip-close').value,
-                };
-                saveSettings({ ...cfg, strip: { ...DEFAULT_SETTINGS.strip, ...cfg.strip, custom: arr } });
-            };
-            row.querySelector('.cv-strip-open').oninput = sync;
-            row.querySelector('.cv-strip-close').oninput = sync;
-            row.querySelector('.cv-strip-del').onclick = () => {
-                const cfg = loadSettings();
-                const arr = (cfg.strip?.custom || []).filter((_, k) => k !== i);
-                saveSettings({ ...cfg, strip: { ...DEFAULT_SETTINGS.strip, ...cfg.strip, custom: arr } });
-                renderCustomList();
-            };
-        });
-    };
-    renderCustomList();
-    document.getElementById('cv_strip_add').onclick = () => {
-        const cfg = loadSettings();
-        const arr = [...(cfg.strip?.custom || []), { open: '', close: '' }];
-        saveSettings({ ...cfg, strip: { ...DEFAULT_SETTINGS.strip, ...cfg.strip, custom: arr } });
-        renderCustomList();
-    };
-    const saveStripFlags = () => {
-        const cfg = loadSettings();
-        saveSettings({
-            ...cfg,
-            strip: {
-                ...DEFAULT_SETTINGS.strip,
-                ...cfg.strip,
-                thinking: document.getElementById('cv_strip_thinking').checked,
-                think: document.getElementById('cv_strip_think').checked,
-                htmlComment: document.getElementById('cv_strip_html').checked,
-            },
-        });
-    };
-    ['cv_strip_thinking', 'cv_strip_think', 'cv_strip_html'].forEach(id => {
-        document.getElementById(id).onchange = saveStripFlags;
-    });
-
-    // ---- 提取设置：渲染自定义对 + 持久化 ----
-    const renderExtractList = () => {
-        const list = document.getElementById('cv_extract_custom_list');
-        const cur = (loadSettings().extract || DEFAULT_EXTRACT).custom || [];
-        list.innerHTML = cur.map((p, i) => `
-            <div class="cv-strip-pair" data-i="${i}">
-                <input type="text" class="cv-strip-open"  placeholder="前 tag，例：<content>"  value="${escapeHtml(p.open || '')}" />
-                <input type="text" class="cv-strip-close" placeholder="后 tag，例：</content>" value="${escapeHtml(p.close || '')}" />
-                <button class="cv-strip-del" type="button" title="删除">×</button>
-            </div>
-        `).join('') || '<div class="cv-field-hint">（暂无）</div>';
-        list.querySelectorAll('.cv-strip-pair').forEach(row => {
-            const i = Number(row.dataset.i);
-            const sync = () => {
-                const cfg = loadSettings();
-                const arr = cfg.extract?.custom ? [...cfg.extract.custom] : [];
-                arr[i] = {
-                    open: row.querySelector('.cv-strip-open').value,
-                    close: row.querySelector('.cv-strip-close').value,
-                };
-                saveSettings({ ...cfg, extract: { ...DEFAULT_EXTRACT, ...cfg.extract, custom: arr } });
-            };
-            row.querySelector('.cv-strip-open').oninput = sync;
-            row.querySelector('.cv-strip-close').oninput = sync;
-            row.querySelector('.cv-strip-del').onclick = () => {
-                const cfg = loadSettings();
-                const arr = (cfg.extract?.custom || []).filter((_, k) => k !== i);
-                saveSettings({ ...cfg, extract: { ...DEFAULT_EXTRACT, ...cfg.extract, custom: arr } });
-                renderExtractList();
-            };
-        });
-    };
-    renderExtractList();
-    document.getElementById('cv_extract_add').onclick = () => {
-        const cfg = loadSettings();
-        const arr = [...(cfg.extract?.custom || []), { open: '', close: '' }];
-        saveSettings({ ...cfg, extract: { ...DEFAULT_EXTRACT, ...cfg.extract, custom: arr } });
-        renderExtractList();
-    };
-    const saveExtractFlags = () => {
-        const cfg = loadSettings();
-        saveSettings({
-            ...cfg,
-            extract: {
-                ...DEFAULT_EXTRACT,
-                ...cfg.extract,
-                content: document.getElementById('cv_extract_content').checked,
-                reply:   document.getElementById('cv_extract_reply').checked,
-            },
-        });
-    };
-    ['cv_extract_content', 'cv_extract_reply'].forEach(id => {
-        document.getElementById(id).onchange = saveExtractFlags;
-    });
-
-    // ---- 导出按钮 ----
-    document.getElementById('cv_m_export_jsonl').onclick = () => exportChatJsonl(character, fileName);
-    document.getElementById('cv_m_export_txt').onclick = () => exportChatTxt(character, fileName);
-
-    // ---- 折叠：导出区块（默认折叠） ----
-    const collapse = document.getElementById('cv_export_collapse');
-    const toggle = document.getElementById('cv_export_toggle');
-    toggle.onclick = () => {
-        const open = collapse.classList.toggle('is-open');
-        toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-    };
 
     document.getElementById('cv_m_close').onclick = closeModal;
     document.getElementById('cv_m_cancel').onclick = closeModal;
@@ -2196,6 +2055,47 @@ function openEditModal(character, fileName) {
 function closeModal() {
     const m = document.getElementById('cv_modal');
     if (m) m.remove();
+}
+
+/* ============================================================
+ *  导出 modal （jsonl 原始 / txt 用阅读模式规则）
+ * ============================================================ */
+
+function openExportModal(character, fileName) {
+    closeModal();
+    const wrap = document.createElement('div');
+    wrap.className = 'cv-modal-backdrop';
+    wrap.id = 'cv_modal';
+    wrap.innerHTML = `
+        <div class="cv-modal" onclick="event.stopPropagation()">
+            <button class="cv-modal-close" id="cv_x_close" type="button" title="关闭">${ICONS.close}</button>
+            <h3>导出聊天</h3>
+            <div class="cv-modal-body">
+                <div class="cv-export-grid">
+                    <button class="cv-export-card" id="cv_x_jsonl" type="button">
+                        <span class="cv-export-card-icon">${ICONS.download}</span>
+                        <span class="cv-export-card-title">jsonl</span>
+                        <span class="cv-export-card-desc">原始数据，原样导出，可重新导入到酒馆</span>
+                    </button>
+                    <button class="cv-export-card" id="cv_x_txt" type="button">
+                        <span class="cv-export-card-icon">${ICONS.download}</span>
+                        <span class="cv-export-card-title">txt</span>
+                        <span class="cv-export-card-desc">纯文本，使用「阅读模式」当前的剥离/提取规则处理</span>
+                    </button>
+                </div>
+                <div class="cv-field-hint">想调整 txt 的剥离/提取规则，请在阅读模式右上角的设置里改。</div>
+            </div>
+            <div class="cv-modal-actions">
+                <button class="cv-btn" id="cv_x_cancel">关闭</button>
+            </div>
+        </div>
+    `;
+    wrap.onclick = closeModal;
+    document.getElementById('chatvault_panel').appendChild(wrap);
+    document.getElementById('cv_x_close').onclick = closeModal;
+    document.getElementById('cv_x_cancel').onclick = closeModal;
+    document.getElementById('cv_x_jsonl').onclick = () => { exportChatJsonl(character, fileName); closeModal(); };
+    document.getElementById('cv_x_txt').onclick   = () => { exportChatTxt(character, fileName);   closeModal(); };
 }
 
 /* ============================================================
