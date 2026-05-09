@@ -1518,6 +1518,9 @@
     }
 }
 
+/* v0.3.21-test: header 右侧两个图标按钮放进一个 flex 容器，避免被 space-between 推开 */
+.cv-header-actions { display: flex; align-items: center; gap: 4px; }
+
 /* v0.3.20-flash: 标题栏手动刷新按钮 + 旋转动画 */
 .cv-refresh-btn { font-size: 0; position: relative; }
 .cv-refresh-btn svg { width: 18px; height: 18px; }
