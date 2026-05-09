@@ -1463,3 +1463,11 @@
     border-top: 1px solid var(--cv-border, rgba(255,255,255,.08));
 }
 .cv-export-rules-body .cv-strip-box { background: transparent; }
+
+/* v0.3.12: 设置面板分隔线 */
+.cv-settings-divider {
+    margin: 12px 0;
+    height: 1px;
+    background: var(--SmartThemeBorderColor, rgba(255,255,255,.1));
+    opacity: .6;
+}
