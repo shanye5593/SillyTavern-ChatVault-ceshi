@@ -13,16 +13,26 @@ const THEMES = [
     { id: 'light',  name: '白底 Light' },
     { id: 'coffee', name: '咖啡 Coffee' },
 ];
+const DEFAULT_STRIP = {
+    thinking: true,
+    think: true,
+    htmlComment: true,
+    custom: [],
+};
+const DEFAULT_EXTRACT = {
+    content: false,           // <content>...</content>
+    reply: false,             // <reply>...</reply>
+    custom: [],               // [{open, close}, ...]
+};
 const DEFAULT_SETTINGS = {
     enabled: true,
     theme: 'dark',
-    // 导出 txt 时的剥离规则（默认全关，用户需自己开）
-    strip: {
-        thinking: true,         // <thinking>...</thinking>
-        think: true,            // <think>...</think>
-        htmlComment: true,      // <!-- ... -->
-        custom: [],             // [{open: '<details>', close: '</details>'}, ...]
-    },
+    // 导出 txt 用的处理规则
+    strip:   { ...DEFAULT_STRIP },
+    extract: { ...DEFAULT_EXTRACT },
+    // 阅读模式用的处理规则（与导出独立）
+    readStrip:   { ...DEFAULT_STRIP },
+    readExtract: { ...DEFAULT_EXTRACT },
 };
 
 function loadSettings() {
@@ -424,6 +434,9 @@ const ICONS = {
     upload: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4"/><polyline points="10 8 14 12 10 16"/><line x1="14" y1="12" x2="3" y2="12"/></svg>`,
     close: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`,
     chevDown: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="6 9 12 15 18 9"/></svg>`,
+    book: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>`,
+    arrowL: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>`,
+    gear: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9 1.65 1.65 0 0 0 4.27 7.18l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09A1.65 1.65 0 0 0 15 4.6a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.14.34.22.7.22 1.06V11a2 2 0 0 1 0 4z"/></svg>`,
 };
 
 /* ============================================================
@@ -675,6 +688,7 @@ function render() {
     if (!panelEl) return; // 面板已被关闭，忽略残留的异步回调
     const body = document.getElementById('cv_body');
     if (!body) return;
+    if (readerState.active) { renderReader(); return; }
     updateTabCounts();
 
     if (activeTab === 'characters') {
@@ -857,13 +871,17 @@ function renderCard(character, chat, hideCharName = false) {
         </div>
     `;
 
+    const active = isActiveChat(character, chat.file_name);
+    const activeBadge = active ? `<span class="cv-active-badge" title="正在使用">使用中</span>` : '';
+    const jumpLabel = active ? '已打开' : '继续';
+
     return `
-        <div class="cv-card" data-avatar="${escapeHtml(character.avatar)}" data-file="${escapeHtml(chat.file_name)}">
+        <div class="cv-card ${active ? 'is-active' : ''}" data-avatar="${escapeHtml(character.avatar)}" data-file="${escapeHtml(chat.file_name)}">
             <img class="cv-card-avatar" src="${avatarUrl}" onerror="this.style.visibility='hidden'" alt="" />
             <div class="cv-card-main">
                 <div class="cv-card-row">
                     <div class="cv-card-titleblock">
-                        <h3 class="cv-title ${titleClass}">${highlight(displayTitle, searchQuery)}</h3>
+                        <h3 class="cv-title ${titleClass}">${activeBadge}${highlight(displayTitle, searchQuery)}</h3>
                         ${subLine}
                     </div>
                     <div class="cv-actions">
@@ -871,7 +889,7 @@ function renderCard(character, chat, hideCharName = false) {
                         <button class="cv-act" data-act="edit" title="编辑标题/标签/导出">${ICONS.edit}</button>
                         <button class="cv-act cv-act-delete" data-act="delete" title="删除">${ICONS.trash}</button>
                         <span class="cv-act-divider"></span>
-                        <button class="cv-act cv-act-jump" data-act="open" title="跳转到此聊天"><span>继续</span>${ICONS.jump}</button>
+                        <button class="cv-act cv-act-jump ${active ? 'is-active' : ''}" data-act="open" title="跳转到此聊天"><span>${jumpLabel}</span>${ICONS.jump}</button>
                     </div>
                 </div>
                 <div class="cv-meta-row">
@@ -879,6 +897,11 @@ function renderCard(character, chat, hideCharName = false) {
                     ${tagsHtml}
                 </div>
                 <div class="cv-preview is-loading" data-preview="1">加载预览中…</div>
+                <div class="cv-fold">
+                    <button class="cv-fold-btn cv-fold-primary" data-act="reader" type="button">${ICONS.book}<span>阅读模式</span></button>
+                    <button class="cv-fold-btn" data-act="export-jsonl" type="button">${ICONS.download}<span>导出 jsonl</span></button>
+                    <button class="cv-fold-btn" data-act="export-txt" type="button">${ICONS.download}<span>导出 txt</span></button>
+                </div>
             </div>
         </div>
     `;
@@ -919,10 +942,7 @@ function bindCardEvents() {
                     const on = toggleStar(avatar, fileName);
                     btn.classList.toggle('is-on', on);
                     updateTabCounts();
-                    if (activeTab === 'favorites' && !on) {
-                        // 从收藏 tab 取消收藏 → 重新渲染
-                        render();
-                    }
+                    if (activeTab === 'favorites' && !on) render();
                 } else if (act === 'edit') {
                     openEditModal(character, fileName);
                 } else if (act === 'delete') {
@@ -933,12 +953,39 @@ function bindCardEvents() {
             };
         });
 
-        // 双击卡片打开（避开操作按钮区与编辑/删除 modal 触发）
+        // 折叠区按钮
+        card.querySelectorAll('.cv-fold-btn').forEach(btn => {
+            btn.onclick = (e) => {
+                e.stopPropagation();
+                const act = btn.dataset.act;
+                if (act === 'reader') enterReader(character, fileName);
+                else if (act === 'export-jsonl') exportChatJsonl(character, fileName);
+                else if (act === 'export-txt')   exportChatTxt(character, fileName);
+            };
+        });
+
+        // 点卡片主体（避开按钮/预览区/折叠区）→ 切换折叠
+        card.querySelector('.cv-card-main').onclick = (e) => {
+            if (e.target.closest('.cv-actions')) return;
+            if (e.target.closest('.cv-fold')) return;
+            // 同一时刻只展开一个：把别的关掉
+            const open = !card.classList.contains('is-folded-open');
+            document.querySelectorAll('.cv-card.is-folded-open').forEach(c => {
+                if (c !== card) c.classList.remove('is-folded-open');
+            });
+            card.classList.toggle('is-folded-open', open);
+        };
+
         card.ondblclick = (e) => {
             if (e.target.closest('.cv-actions')) return;
+            if (e.target.closest('.cv-fold')) return;
             jumpToChat(character, fileName);
         };
     });
+
+    // 当前正在使用的卡片：默认展开折叠区
+    const active = document.querySelector('.cv-card.is-active');
+    if (active) active.classList.add('is-folded-open');
 }
 
 /* ============================================================
@@ -1034,9 +1081,10 @@ async function fetchFullChat(character, fileName) {
 
 function escapeRegex(s) { return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
 
-// 按设置剥离 message text
+// 按设置剥离 message text（删掉指定标签包裹的内容）
 function applyStripping(text, strip) {
     if (typeof text !== 'string' || !text) return text || '';
+    if (!strip) return text;
     let out = text;
     if (strip.thinking) out = out.replace(/<thinking[^>]*>[\s\S]*?<\/thinking>/gi, '');
     if (strip.think)    out = out.replace(/<think[^>]*>[\s\S]*?<\/think>/gi, '');
@@ -1048,8 +1096,327 @@ function applyStripping(text, strip) {
             out = out.replace(re, '');
         }
     }
-    // 去多余空行
     return out.replace(/\n{3,}/g, '\n\n').trim();
+}
+
+// 按设置提取 message text（只保留指定标签包裹的内容；都没匹配到就返回原文）
+function applyExtraction(text, extract) {
+    if (typeof text !== 'string' || !text) return text || '';
+    if (!extract) return text;
+    const tags = [];
+    if (extract.content) tags.push({ open: '<content>',  close: '</content>'  });
+    if (extract.reply)   tags.push({ open: '<reply>',    close: '</reply>'    });
+    if (Array.isArray(extract.custom)) {
+        for (const p of extract.custom) if (p?.open && p?.close) tags.push(p);
+    }
+    if (!tags.length) return text;
+    const parts = [];
+    for (const p of tags) {
+        const re = new RegExp(escapeRegex(p.open) + '([\\s\\S]*?)' + escapeRegex(p.close), 'gi');
+        let m;
+        while ((m = re.exec(text)) !== null) parts.push(m[1].trim());
+    }
+    if (!parts.length) return text; // 没匹配到不丢原文，避免"全空"惊吓
+    return parts.join('\n\n');
+}
+
+// 完整管线：先剥离再提取
+function processMessageText(text, strip, extract) {
+    return applyExtraction(applyStripping(text, strip), extract).trim();
+}
+
+/* ============================================================
+ *  阅读模式（面板内分页阅读全部楼层）
+ * ============================================================ */
+const READER_PAGE_SIZE = 30;
+const readerState = {
+    active: false,
+    character: null,
+    fileName: '',
+    arr: null,            // 完整聊天数组（含 metadata）
+    page: 1,
+};
+
+async function enterReader(character, fileName) {
+    if (!character || !fileName) return;
+    readerState.active = true;
+    readerState.character = character;
+    readerState.fileName = fileName;
+    readerState.arr = null;
+    readerState.page = 1;
+    renderReader();
+    try {
+        readerState.arr = await fetchFullChat(character, fileName);
+    } catch (e) {
+        readerState.arr = { error: e.message || String(e) };
+    }
+    renderReader();
+}
+
+function exitReader() {
+    readerState.active = false;
+    readerState.arr = null;
+    render();
+}
+
+function readerCfg() {
+    const cfg = loadSettings();
+    return {
+        strip:   { ...DEFAULT_STRIP,   ...(cfg.readStrip   || {}) },
+        extract: { ...DEFAULT_EXTRACT, ...(cfg.readExtract || {}) },
+    };
+}
+
+function renderReader() {
+    const body = document.getElementById('cv_body');
+    if (!body) return;
+    const { character, fileName, arr, page } = readerState;
+    const meta = getMetaFor(character.avatar, fileName);
+    const title = meta.customTitle || fileName;
+    const avatarUrl = character.avatar ? `/thumbnail?type=avatar&file=${encodeURIComponent(character.avatar)}` : '';
+
+    // 顶栏 + 设置按钮 + 占位
+    const headerHtml = `
+        <div class="cv-reader-header">
+            <button class="cv-reader-back" id="cv_reader_back" type="button" title="返回列表">${ICONS.arrowL}<span>返回</span></button>
+            <div class="cv-reader-title">
+                <img class="cv-reader-avatar" src="${avatarUrl}" onerror="this.style.visibility='hidden'" alt=""/>
+                <div class="cv-reader-titletext">
+                    <div class="cv-reader-charname">${escapeHtml(character.name || '')}</div>
+                    <div class="cv-reader-chatname">${escapeHtml(title)}</div>
+                </div>
+            </div>
+            <button class="cv-reader-gear" id="cv_reader_gear" type="button" title="阅读模式：摘取设置">${ICONS.gear}</button>
+        </div>
+        <div class="cv-reader-settings" id="cv_reader_settings" hidden></div>
+    `;
+
+    if (!arr) {
+        body.innerHTML = headerHtml + `<div class="cv-reader-loading">正在加载完整聊天…</div>`;
+        bindReaderHeader();
+        return;
+    }
+    if (arr.error) {
+        body.innerHTML = headerHtml + `<div class="cv-empty">加载失败：${escapeHtml(arr.error)}</div>`;
+        bindReaderHeader();
+        return;
+    }
+
+    const cfg = readerCfg();
+    const messages = arr.slice(1); // 去掉 metadata
+    const userName = arr[0]?.user_name || '用户';
+    const charName = character.name || arr[0]?.character_name || '角色';
+
+    // 处理 + 缓存（依赖 cfg 序列化）
+    const cfgSig = JSON.stringify(cfg);
+    if (readerState._cfgSig !== cfgSig || !readerState._processed) {
+        readerState._cfgSig = cfgSig;
+        readerState._processed = messages.map((m, idx) => {
+            const text = (m && typeof m.mes === 'string') ? processMessageText(m.mes, cfg.strip, cfg.extract) : '';
+            return { idx, who: m?.is_user ? userName : (m?.name || charName), is_user: !!m?.is_user, text };
+        });
+    }
+    const processed = readerState._processed;
+    const total = processed.length;
+    const totalPages = Math.max(1, Math.ceil(total / READER_PAGE_SIZE));
+    if (readerState.page > totalPages) readerState.page = totalPages;
+    const start = (readerState.page - 1) * READER_PAGE_SIZE;
+    const slice = processed.slice(start, start + READER_PAGE_SIZE);
+
+    const cardHtml = slice.map(m => {
+        const who = escapeHtml(m.who);
+        const text = m.text ? escapeHtml(m.text).replace(/\n/g, '<br>') : '<span class="cv-reader-empty">（空）</span>';
+        const av = m.is_user ? '' : avatarUrl;
+        const avHtml = av
+            ? `<img class="cv-reader-msg-avatar" src="${av}" onerror="this.style.visibility='hidden'" alt=""/>`
+            : `<div class="cv-reader-msg-avatar cv-reader-user-avatar">${escapeHtml((userName||'U').slice(0,1))}</div>`;
+        return `
+            <div class="cv-reader-msg ${m.is_user ? 'is-user' : 'is-char'}">
+                <div class="cv-reader-msg-head">
+                    ${avHtml}
+                    <span class="cv-reader-msg-who">${who}</span>
+                    <span class="cv-reader-msg-floor">#${m.idx}</span>
+                </div>
+                <div class="cv-reader-msg-body">${text}</div>
+            </div>
+        `;
+    }).join('');
+
+    const pagerHtml = renderReaderPager(readerState.page, totalPages, total);
+    body.innerHTML = headerHtml
+        + `<div class="cv-reader-meta">共 ${total} 楼 · 每页 ${READER_PAGE_SIZE} 楼 · 共 ${totalPages} 页</div>`
+        + `<div class="cv-reader-list">${cardHtml || '<div class="cv-empty">没有可显示的内容</div>'}</div>`
+        + pagerHtml;
+    bindReaderHeader();
+    bindReaderPager(totalPages);
+    body.scrollTop = 0;
+}
+
+function renderReaderPager(page, totalPages, total) {
+    if (totalPages <= 1) return '';
+    // 简洁页码：首页/上一页/<input>/下一页/末页 + 跳转
+    return `
+        <div class="cv-reader-pager">
+            <button class="cv-pager-btn" data-go="first" ${page<=1?'disabled':''}>«</button>
+            <button class="cv-pager-btn" data-go="prev"  ${page<=1?'disabled':''}>${ICONS.chevL}</button>
+            <span class="cv-pager-page">第
+                <input type="number" id="cv_pager_input" min="1" max="${totalPages}" value="${page}" />
+                / ${totalPages} 页</span>
+            <button class="cv-pager-btn" data-go="next"  ${page>=totalPages?'disabled':''}>${ICONS.chevR}</button>
+            <button class="cv-pager-btn" data-go="last"  ${page>=totalPages?'disabled':''}>»</button>
+            <button class="cv-pager-go" id="cv_pager_go" type="button">跳转</button>
+        </div>
+    `;
+}
+
+function bindReaderHeader() {
+    const back = document.getElementById('cv_reader_back');
+    if (back) back.onclick = exitReader;
+    const gear = document.getElementById('cv_reader_gear');
+    const panel = document.getElementById('cv_reader_settings');
+    if (gear && panel) {
+        gear.onclick = () => {
+            if (panel.hidden) renderReaderSettings(panel);
+            panel.hidden = !panel.hidden;
+        };
+    }
+}
+
+function bindReaderPager(totalPages) {
+    const goTo = (p) => {
+        p = Math.max(1, Math.min(totalPages, Math.floor(Number(p) || 1)));
+        if (p === readerState.page) return;
+        readerState.page = p;
+        renderReader();
+    };
+    document.querySelectorAll('.cv-pager-btn').forEach(b => {
+        b.onclick = () => {
+            const dir = b.dataset.go;
+            if (dir === 'first') goTo(1);
+            else if (dir === 'last') goTo(totalPages);
+            else if (dir === 'prev') goTo(readerState.page - 1);
+            else if (dir === 'next') goTo(readerState.page + 1);
+        };
+    });
+    const inp = document.getElementById('cv_pager_input');
+    const goBtn = document.getElementById('cv_pager_go');
+    if (goBtn) goBtn.onclick = () => goTo(inp?.value);
+    if (inp) inp.onkeydown = (e) => { if (e.key === 'Enter') goTo(inp.value); };
+}
+
+function renderReaderSettings(panel) {
+    const cfg = loadSettings();
+    const strip = { ...DEFAULT_STRIP, ...(cfg.readStrip || {}) };
+    const extract = { ...DEFAULT_EXTRACT, ...(cfg.readExtract || {}) };
+    const sw = (id, on, label) => `
+        <label class="cv-switch-row">
+            <span class="cv-switch-label">${label}</span>
+            <span class="cv-switch">
+                <input type="checkbox" id="${id}" ${on ? 'checked' : ''}/>
+                <span class="cv-switch-track"><span class="cv-switch-thumb"></span></span>
+            </span>
+        </label>`;
+    panel.innerHTML = `
+        <div class="cv-strip-box">
+            <div class="cv-strip-title">剥离（删掉这些标签包裹的内容）</div>
+            ${sw('cv_r_s_thinking', strip.thinking, '&lt;thinking&gt;…&lt;/thinking&gt;')}
+            ${sw('cv_r_s_think',    strip.think,    '&lt;think&gt;…&lt;/think&gt;')}
+            ${sw('cv_r_s_html',     strip.htmlComment, 'HTML 注释')}
+            <div class="cv-strip-custom-title">自定义剥离对</div>
+            <div id="cv_r_s_list"></div>
+            <button class="cv-btn cv-strip-add" id="cv_r_s_add" type="button">+ 添加</button>
+        </div>
+        <div class="cv-strip-box">
+            <div class="cv-strip-title">提取（只保留这些标签内的内容；都没匹配到时保留原文）</div>
+            ${sw('cv_r_e_content', extract.content, '&lt;content&gt;…&lt;/content&gt;')}
+            ${sw('cv_r_e_reply',   extract.reply,   '&lt;reply&gt;…&lt;/reply&gt;')}
+            <div class="cv-strip-custom-title">自定义提取对</div>
+            <div id="cv_r_e_list"></div>
+            <button class="cv-btn cv-strip-add" id="cv_r_e_add" type="button">+ 添加</button>
+        </div>
+        <div class="cv-reader-settings-hint">改完会立即重排当前页面</div>
+    `;
+    const repaint = () => { readerState._processed = null; renderReader(); };
+
+    const renderList = (listId, key) => {
+        const list = document.getElementById(listId);
+        const cur = (loadSettings()[key]?.custom) || [];
+        list.innerHTML = cur.map((p, i) => `
+            <div class="cv-strip-pair" data-i="${i}">
+                <input type="text" class="cv-strip-open"  placeholder="前 tag" value="${escapeHtml(p.open || '')}"/>
+                <input type="text" class="cv-strip-close" placeholder="后 tag" value="${escapeHtml(p.close || '')}"/>
+                <button class="cv-strip-del" type="button">×</button>
+            </div>
+        `).join('') || '<div class="cv-field-hint">（暂无）</div>';
+        list.querySelectorAll('.cv-strip-pair').forEach(row => {
+            const i = Number(row.dataset.i);
+            const sync = () => {
+                const c = loadSettings();
+                const arr = (c[key]?.custom || []).slice();
+                arr[i] = {
+                    open: row.querySelector('.cv-strip-open').value,
+                    close: row.querySelector('.cv-strip-close').value,
+                };
+                saveSettings({ ...c, [key]: { ...(key==='readStrip'?DEFAULT_STRIP:DEFAULT_EXTRACT), ...c[key], custom: arr } });
+                repaint();
+            };
+            row.querySelector('.cv-strip-open').oninput = sync;
+            row.querySelector('.cv-strip-close').oninput = sync;
+            row.querySelector('.cv-strip-del').onclick = () => {
+                const c = loadSettings();
+                const arr = (c[key]?.custom || []).filter((_, k) => k !== i);
+                saveSettings({ ...c, [key]: { ...(key==='readStrip'?DEFAULT_STRIP:DEFAULT_EXTRACT), ...c[key], custom: arr } });
+                renderList(listId, key);
+                repaint();
+            };
+        });
+    };
+    renderList('cv_r_s_list', 'readStrip');
+    renderList('cv_r_e_list', 'readExtract');
+    document.getElementById('cv_r_s_add').onclick = () => {
+        const c = loadSettings();
+        const arr = [...((c.readStrip?.custom) || []), { open: '', close: '' }];
+        saveSettings({ ...c, readStrip: { ...DEFAULT_STRIP, ...c.readStrip, custom: arr } });
+        renderList('cv_r_s_list', 'readStrip');
+    };
+    document.getElementById('cv_r_e_add').onclick = () => {
+        const c = loadSettings();
+        const arr = [...((c.readExtract?.custom) || []), { open: '', close: '' }];
+        saveSettings({ ...c, readExtract: { ...DEFAULT_EXTRACT, ...c.readExtract, custom: arr } });
+        renderList('cv_r_e_list', 'readExtract');
+    };
+    const flagMap = {
+        cv_r_s_thinking: ['readStrip', 'thinking'],
+        cv_r_s_think:    ['readStrip', 'think'],
+        cv_r_s_html:     ['readStrip', 'htmlComment'],
+        cv_r_e_content:  ['readExtract', 'content'],
+        cv_r_e_reply:    ['readExtract', 'reply'],
+    };
+    Object.entries(flagMap).forEach(([id, [grp, k]]) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.onchange = () => {
+            const c = loadSettings();
+            const base = grp === 'readStrip' ? DEFAULT_STRIP : DEFAULT_EXTRACT;
+            saveSettings({ ...c, [grp]: { ...base, ...c[grp], [k]: el.checked } });
+            repaint();
+        };
+    });
+}
+
+function getCurrentChatFileName() {
+    try {
+        const ctx = SillyTavern.getContext();
+        let id = ctx.chatId;
+        if (!id && typeof ctx.getCurrentChatId === 'function') id = ctx.getCurrentChatId();
+        return id ? stripExt(String(id)) : null;
+    } catch { return null; }
+}
+function isActiveChat(character, fileName) {
+    const cur = getCurrentCharacter();
+    if (!cur || cur.avatar !== character.avatar) return false;
+    const cid = getCurrentChatFileName();
+    return !!cid && stripExt(fileName) === cid;
 }
 
 function downloadBlob(blob, filename) {
@@ -1079,7 +1446,9 @@ async function exportChatTxt(character, fileName) {
     setStatus('正在导出 txt…');
     try {
         const arr = await fetchFullChat(character, fileName);
-        const strip = loadSettings().strip || DEFAULT_SETTINGS.strip;
+        const cfg = loadSettings();
+        const strip = { ...DEFAULT_STRIP, ...(cfg.strip || {}) };
+        const extract = { ...DEFAULT_EXTRACT, ...(cfg.extract || {}) };
         const meta = arr[0] || {};
         const userName = meta.user_name || '用户';
         const charName = character.name || meta.character_name || '角色';
@@ -1088,7 +1457,7 @@ async function exportChatTxt(character, fileName) {
             const m = arr[i];
             if (!m || typeof m.mes !== 'string') continue;
             const who = m.is_user ? userName : (m.name || charName);
-            const cleaned = applyStripping(m.mes, strip);
+            const cleaned = processMessageText(m.mes, strip, extract);
             if (!cleaned) continue;
             lines.push(`【${who}】`);
             lines.push(cleaned);
@@ -1165,7 +1534,8 @@ function openEditModal(character, fileName) {
     const meta = getMetaFor(character.avatar, fileName);
     const customTitle = meta.customTitle || '';
     const tags = Array.isArray(meta.tags) ? meta.tags : [];
-    const stripCfg = { ...DEFAULT_SETTINGS.strip, ...(loadSettings().strip || {}) };
+    const stripCfg = { ...DEFAULT_STRIP, ...(loadSettings().strip || {}) };
+    const extractCfg = { ...DEFAULT_EXTRACT, ...(loadSettings().extract || {}) };
 
     closeModal();
     const wrap = document.createElement('div');
@@ -1219,6 +1589,14 @@ function openEditModal(character, fileName) {
                             <div class="cv-strip-custom-title">自定义标签对（每行一对：前 tag + 后 tag，按字面量匹配）</div>
                             <div id="cv_strip_custom_list"></div>
                             <button class="cv-btn cv-strip-add" id="cv_strip_add" type="button">+ 添加一项</button>
+                        </div>
+                        <div class="cv-strip-box">
+                            <div class="cv-strip-title">只保留以下标签内的内容（提取，与剥离并存；都没匹配到时保留原文）</div>
+                            ${swRow('cv_extract_content', extractCfg.content, '&lt;content&gt;…&lt;/content&gt;')}
+                            ${swRow('cv_extract_reply',   extractCfg.reply,   '&lt;reply&gt;…&lt;/reply&gt;')}
+                            <div class="cv-strip-custom-title">自定义提取对</div>
+                            <div id="cv_extract_custom_list"></div>
+                            <button class="cv-btn cv-strip-add" id="cv_extract_add" type="button">+ 添加一项</button>
                         </div>
                     </div>
                 </div>
@@ -1288,6 +1666,61 @@ function openEditModal(character, fileName) {
     };
     ['cv_strip_thinking', 'cv_strip_think', 'cv_strip_html'].forEach(id => {
         document.getElementById(id).onchange = saveStripFlags;
+    });
+
+    // ---- 提取设置：渲染自定义对 + 持久化 ----
+    const renderExtractList = () => {
+        const list = document.getElementById('cv_extract_custom_list');
+        const cur = (loadSettings().extract || DEFAULT_EXTRACT).custom || [];
+        list.innerHTML = cur.map((p, i) => `
+            <div class="cv-strip-pair" data-i="${i}">
+                <input type="text" class="cv-strip-open"  placeholder="前 tag，例：<content>"  value="${escapeHtml(p.open || '')}" />
+                <input type="text" class="cv-strip-close" placeholder="后 tag，例：</content>" value="${escapeHtml(p.close || '')}" />
+                <button class="cv-strip-del" type="button" title="删除">×</button>
+            </div>
+        `).join('') || '<div class="cv-field-hint">（暂无）</div>';
+        list.querySelectorAll('.cv-strip-pair').forEach(row => {
+            const i = Number(row.dataset.i);
+            const sync = () => {
+                const cfg = loadSettings();
+                const arr = cfg.extract?.custom ? [...cfg.extract.custom] : [];
+                arr[i] = {
+                    open: row.querySelector('.cv-strip-open').value,
+                    close: row.querySelector('.cv-strip-close').value,
+                };
+                saveSettings({ ...cfg, extract: { ...DEFAULT_EXTRACT, ...cfg.extract, custom: arr } });
+            };
+            row.querySelector('.cv-strip-open').oninput = sync;
+            row.querySelector('.cv-strip-close').oninput = sync;
+            row.querySelector('.cv-strip-del').onclick = () => {
+                const cfg = loadSettings();
+                const arr = (cfg.extract?.custom || []).filter((_, k) => k !== i);
+                saveSettings({ ...cfg, extract: { ...DEFAULT_EXTRACT, ...cfg.extract, custom: arr } });
+                renderExtractList();
+            };
+        });
+    };
+    renderExtractList();
+    document.getElementById('cv_extract_add').onclick = () => {
+        const cfg = loadSettings();
+        const arr = [...(cfg.extract?.custom || []), { open: '', close: '' }];
+        saveSettings({ ...cfg, extract: { ...DEFAULT_EXTRACT, ...cfg.extract, custom: arr } });
+        renderExtractList();
+    };
+    const saveExtractFlags = () => {
+        const cfg = loadSettings();
+        saveSettings({
+            ...cfg,
+            extract: {
+                ...DEFAULT_EXTRACT,
+                ...cfg.extract,
+                content: document.getElementById('cv_extract_content').checked,
+                reply:   document.getElementById('cv_extract_reply').checked,
+            },
+        });
+    };
+    ['cv_extract_content', 'cv_extract_reply'].forEach(id => {
+        document.getElementById(id).onchange = saveExtractFlags;
     });
 
     // ---- 导出按钮 ----
