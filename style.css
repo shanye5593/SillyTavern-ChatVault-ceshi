@@ -176,6 +176,7 @@
     position: relative;
     flex: 1;
     max-width: 360px;
+    margin-left: auto;   /* v0.3.22-test: PC 端搜索框靠右贴近操作按钮，避免居中漂浮 */
 }
 
 .cv-search-wrap::before {
