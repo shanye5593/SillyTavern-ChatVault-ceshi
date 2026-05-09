@@ -1167,6 +1167,40 @@
     min-width: 42px; text-align: right;
 }
 
+/* 标题旁的"!"说明按钮 + 展开 tip */
+.cv-strip-title { display: flex; align-items: center; gap: 6px; }
+.cv-info-btn {
+    width: 18px; height: 18px; border-radius: 50%;
+    border: 1px solid var(--cv-border, rgba(255,255,255,0.3));
+    background: transparent;
+    color: var(--cv-text-primary, inherit); opacity: .55;
+    font-size: 11px; font-weight: 700; line-height: 1;
+    display: inline-flex; align-items: center; justify-content: center;
+    cursor: pointer; padding: 0;
+    transition: opacity .15s, border-color .15s, color .15s, background-color .15s;
+    font-family: serif;
+}
+.cv-info-btn:hover { opacity: 1; }
+.cv-info-btn.is-on {
+    opacity: 1;
+    border-color: var(--cv-accent, #6e8efb);
+    color: var(--cv-accent, #6e8efb);
+    background: color-mix(in srgb, var(--cv-accent, #6e8efb) 14%, transparent);
+}
+.cv-info-tip[hidden] { display: none !important; }
+.cv-info-tip {
+    margin: 6px 0 8px; padding: 10px 12px;
+    border-left: 3px solid var(--cv-accent, #6e8efb);
+    background: color-mix(in srgb, var(--cv-accent, #6e8efb) 6%, transparent);
+    border-radius: 0 8px 8px 0;
+    font-size: 12px; line-height: 1.7; opacity: .92;
+}
+.cv-info-tip code {
+    font-size: 11px;
+    padding: 1px 5px; border-radius: 4px;
+    background: color-mix(in srgb, var(--cv-text-primary, #fff) 10%, transparent);
+}
+
 /* 底部留白，给浮动分页器让位 */
 .cv-reader-bottom-spacer { height: 96px; }
 
