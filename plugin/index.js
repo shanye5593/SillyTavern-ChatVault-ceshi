@@ -1255,7 +1255,16 @@ function renderReader() {
 
     const cfg = cfgPre;
     const messages = arr.slice(1); // 去掉 metadata
-    const userName = arr[0]?.user_name || '用户';
+    // user 名字 / 头像：从酒馆全局取，metadata 里的 user_name 经常是 'unused'
+    let userName = '用户';
+    let userAvatarUrl = '';
+    try {
+        const ctx = SillyTavern.getContext();
+        userName = ctx?.name1 || ctx?.user?.name || arr[0]?.user_name || '用户';
+        const ua = ctx?.user_avatar || ctx?.userAvatar;
+        if (ua) userAvatarUrl = `/User Avatars/${encodeURIComponent(ua)}`;
+    } catch { userName = arr[0]?.user_name || '用户'; }
+    if (userName === 'unused') userName = '用户';
     const charName = character.name || arr[0]?.character_name || '角色';
 
     // 处理 + 缓存（依赖 strip/extract/userRules 配置，不含 style）
@@ -1293,15 +1302,16 @@ function renderReader() {
     const cardHtml = slice.map(m => {
         const who = escapeHtml(m.who);
         // 把消息按段落（连续换行视作分段）拆成 <p>，单换行保留为 <br>，便于首行缩进
+        // 每个非空"行"包成一段，让首行缩进对每段生效（包含连续换行产生的空行也被丢弃）
         const text = m.text
-            ? m.text.split(/\n{2,}/).map(seg =>
-                `<p class="cv-msg-p">${escapeHtml(seg.trim()).replace(/\n/g, '<br>')}</p>`
-              ).join('')
+            ? m.text.split(/\n+/).map(s => s.trim()).filter(Boolean)
+                .map(seg => `<p class="cv-msg-p">${escapeHtml(seg)}</p>`).join('')
+              || '<span class="cv-reader-empty">（空）</span>'
             : '<span class="cv-reader-empty">（空）</span>';
-        const av = m.is_user ? '' : avatarUrl;
+        const av = m.is_user ? userAvatarUrl : avatarUrl;
         const avHtml = av
             ? `<img class="cv-reader-msg-avatar" src="${av}" onerror="this.style.visibility='hidden'" alt=""/>`
-            : `<div class="cv-reader-msg-avatar cv-reader-user-avatar">${escapeHtml((userName||'U').slice(0,1))}</div>`;
+            : `<div class="cv-reader-msg-avatar cv-reader-user-avatar">${escapeHtml((m.who||'U').slice(0,1))}</div>`;
         return `
             <div class="cv-reader-msg ${m.is_user ? 'is-user' : 'is-char'}">
                 <div class="cv-reader-msg-head">
@@ -1504,7 +1514,16 @@ function renderReaderSettings(panel) {
                 ${stripBlock('cv_r_s', strip)}
             </div>
             <div class="cv-strip-box">
-                <div class="cv-strip-title">提取（只保留这些标签内的内容；都没匹配到时保留原文）</div>
+                <div class="cv-strip-title">
+                    提取（只保留这些标签内的内容）
+                    <button class="cv-info-btn" type="button" id="cv_r_e_info" title="点击查看说明">!</button>
+                </div>
+                <div class="cv-info-tip" id="cv_r_e_info_tip" hidden>
+                    <b>提取功能注意</b>：开启后，正文必须被对应标签完整包裹（例：<code>&lt;content&gt;…&lt;/content&gt;</code>），否则——<br>
+                    · 如果 AI 没有用 <code>&lt;content&gt;</code> 包裹正文，阅读模式将不会显示任何内容；<br>
+                    · 如果包裹错误（标签未闭合、缺少结束标签），同样会显示为空。<br>
+                    遇到正文消失，请<b>关闭提取功能</b>试试，或确认 AI 输出格式与提取标签一致。
+                </div>
                 ${extractBlock('cv_r_e', extract)}
             </div>
             <div class="cv-strip-box cv-user-rules-box">
@@ -1515,15 +1534,17 @@ function renderReaderSettings(panel) {
                         <span class="cv-switch-track"><span class="cv-switch-thumb"></span></span>
                     </span>
                 </label>
-                <div class="cv-field-hint">开启后，user 消息按下面这组规则处理（覆盖默认规则）。适合用记忆/状态栏插件、user 消息夹杂额外信息的场景。</div>
+                <div class="cv-field-hint">开启后，user 消息按下面这组规则处理（覆盖默认规则）。user 消息一般没有思考标签，所以这里只保留自定义对。</div>
                 <div class="cv-user-rules-body" ${userR.enabled?'':'hidden'}>
                     <div class="cv-strip-subbox">
-                        <div class="cv-strip-subtitle">user · 剥离</div>
-                        ${stripBlock('cv_r_us', ustrip)}
+                        <div class="cv-strip-subtitle">user · 剥离（自定义对）</div>
+                        <div id="cv_r_us_list"></div>
+                        <button class="cv-btn cv-strip-add" id="cv_r_us_add" type="button">+ 添加</button>
                     </div>
                     <div class="cv-strip-subbox">
-                        <div class="cv-strip-subtitle">user · 提取</div>
-                        ${extractBlock('cv_r_ue', uextract)}
+                        <div class="cv-strip-subtitle">user · 提取（自定义对）</div>
+                        <div id="cv_r_ue_list"></div>
+                        <button class="cv-btn cv-strip-add" id="cv_r_ue_add" type="button">+ 添加</button>
                     </div>
                 </div>
             </div>
@@ -1597,21 +1618,15 @@ function renderReaderSettings(panel) {
     renderList('cv_r_ue_list', 'cv_r_ue_add', ['userReadRules', 'extract'], false);
 
     // 开关 → [id, path, key, isStrip]
+    // user 区不再有滑块开关（user 消息没有思考/HTML 注释/markdown 标题等场景），只保留自定义对
     const flagMap = [
-        ['cv_r_s_thinking',   ['readStrip'],                 'thinking',    true],
-        ['cv_r_s_think',      ['readStrip'],                 'think',       true],
-        ['cv_r_s_html',       ['readStrip'],                 'htmlComment', true],
-        ['cv_r_s_self',       ['readStrip'],                 'selfClosing', true],
-        ['cv_r_s_md',         ['readStrip'],                 'mdHeaders',   true],
-        ['cv_r_e_content',    ['readExtract'],               'content',     false],
-        ['cv_r_e_reply',      ['readExtract'],               'reply',       false],
-        ['cv_r_us_thinking',  ['userReadRules', 'strip'],   'thinking',    true],
-        ['cv_r_us_think',     ['userReadRules', 'strip'],   'think',       true],
-        ['cv_r_us_html',      ['userReadRules', 'strip'],   'htmlComment', true],
-        ['cv_r_us_self',      ['userReadRules', 'strip'],   'selfClosing', true],
-        ['cv_r_us_md',        ['userReadRules', 'strip'],   'mdHeaders',   true],
-        ['cv_r_ue_content',   ['userReadRules', 'extract'], 'content',     false],
-        ['cv_r_ue_reply',     ['userReadRules', 'extract'], 'reply',       false],
+        ['cv_r_s_thinking',   ['readStrip'],   'thinking',    true],
+        ['cv_r_s_think',      ['readStrip'],   'think',       true],
+        ['cv_r_s_html',       ['readStrip'],   'htmlComment', true],
+        ['cv_r_s_self',       ['readStrip'],   'selfClosing', true],
+        ['cv_r_s_md',         ['readStrip'],   'mdHeaders',   true],
+        ['cv_r_e_content',    ['readExtract'], 'content',     false],
+        ['cv_r_e_reply',      ['readExtract'], 'reply',       false],
     ];
     flagMap.forEach(([id, path, k, isStrip]) => {
         const el = document.getElementById(id);
@@ -1679,6 +1694,17 @@ function renderReaderSettings(panel) {
         const stage = document.querySelector('.cv-reader-stage');
         if (stage) stage.dataset.indent = indentSw.checked ? '1' : '0';
     };
+
+    // 提取功能的"!"说明按钮 → 切换展开 tip
+    const infoBtn = document.getElementById('cv_r_e_info');
+    const infoTip = document.getElementById('cv_r_e_info_tip');
+    if (infoBtn && infoTip) {
+        infoBtn.onclick = (e) => {
+            e.stopPropagation();
+            infoTip.hidden = !infoTip.hidden;
+            infoBtn.classList.toggle('is-on', !infoTip.hidden);
+        };
+    }
 
     // × 关闭按钮
     const closeBtn = document.getElementById('cv_r_close');
