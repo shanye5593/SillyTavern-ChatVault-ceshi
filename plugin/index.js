@@ -4,12 +4,9 @@
  * https://github.com/shanye5593/SillyTavern-ChatVault
  */
 
-const VERSION = '0.3.16-test';
+const VERSION = '0.2.5';
 const STORAGE_KEY = 'st-chatvault-meta';
 const SETTINGS_KEY = 'st-chatvault-settings';
-// 本地缓存（瞬开模式）专用前缀；清理函数只动这个前缀，绝不波及其他 key
-const CACHE_KEY_PREFIX = 'SillyTavern-ChatVault::cache::';
-const CACHE_SCHEMA_VERSION = 1;
 const PAGE_SIZE = 50;
 const THEMES = [
     { id: 'dark',   name: '夜间 Dark' },
@@ -63,8 +60,6 @@ const DEFAULT_SETTINGS = {
     readerFontSize: 15,
     // 阅读模式段落首行缩进
     readerIndent: false,
-    // 主面板：本地缓存（瞬开模式）。默认关，识货的用户主动开
-    cacheEnabled: false,
 };
 
 function loadSettings() {
@@ -76,68 +71,6 @@ function loadSettings() {
 }
 function saveSettings(s) {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
-}
-
-/* ---- 本地缓存（瞬开模式）助手 ----
- * 严格白名单：所有清理 / 读写都只动 CACHE_KEY_PREFIX 开头的 key
- * 永远不调 localStorage.clear()，永远不接受外部传入的 key
- */
-function getCurrentUserName() {
-    try {
-        const ctx = SillyTavern?.getContext?.() || {};
-        return ctx.userName || ctx.user_name || ctx.user || 'default';
-    } catch { return 'default'; }
-}
-function getCacheKey() {
-    return `${CACHE_KEY_PREFIX}v${CACHE_SCHEMA_VERSION}::${getCurrentUserName()}`;
-}
-function readPersistedCache() {
-    try {
-        const raw = localStorage.getItem(getCacheKey());
-        if (!raw) return null;
-        const parsed = JSON.parse(raw);
-        if (!parsed || parsed.v !== CACHE_SCHEMA_VERSION) return null;
-        return parsed;
-    } catch { return null; }
-}
-function writePersistedCache(payload) {
-    try {
-        localStorage.setItem(getCacheKey(), JSON.stringify({
-            v: CACHE_SCHEMA_VERSION,
-            savedAt: Date.now(),
-            ...payload,
-        }));
-    } catch (e) {
-        // 配额溢出等：放弃写入，下次开面板照旧全量
-        console.warn('[ChatVault] 本地缓存写入失败（可能配额溢出）：', e);
-    }
-}
-function clearOwnCache() {
-    // 严格扫前缀；用 keys 数组先收集再删，避免遍历时索引漂移
-    const keys = [];
-    for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (k && k.startsWith(CACHE_KEY_PREFIX)) keys.push(k);
-    }
-    keys.forEach(k => localStorage.removeItem(k));
-    return keys.length;
-}
-function getCacheBytes() {
-    let total = 0;
-    for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (k && k.startsWith(CACHE_KEY_PREFIX)) {
-            const v = localStorage.getItem(k) || '';
-            total += k.length + v.length;
-        }
-    }
-    return total;
-}
-function formatBytes(n) {
-    if (!n) return '0 B';
-    if (n < 1024) return `${n} B`;
-    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-    return `${(n / 1024 / 1024).toFixed(2)} MB`;
 }
 function currentThemeClass() {
     const id = loadSettings().theme;
@@ -218,14 +151,12 @@ function headers() {
     };
 }
 
-async function fetchAllCharacters({ forceApi = false } = {}) {
+async function fetchAllCharacters() {
     let raw = null;
-    if (!forceApi) {
-        try {
-            const ctx = SillyTavern.getContext();
-            if (ctx?.characters?.length) raw = ctx.characters;
-        } catch {}
-    }
+    try {
+        const ctx = SillyTavern.getContext();
+        if (ctx?.characters?.length) raw = ctx.characters;
+    } catch {}
     if (!raw) {
         const res = await fetch('/api/characters/all', {
             method: 'POST',
@@ -436,7 +367,6 @@ const groupOpen = new Set();     // 「按角色」tab 中已展开的角色 ava
 let charactersCache = [];        // 角色数组
 let chatsByAvatar = {};          // { avatar: [{file_name, last_mes, mes, file_size, ...}] }
 let errorsByAvatar = {};         // 加载失败信息
-let cacheFingerprint = null;     // 上次加载的全局指纹；用于「指纹一致 → 命中缓存秒开」
 let activeTab = 'recent';        // 'recent' | 'characters' | 'favorites' | 'current'
 let currentPage = 1;             // 当前 tab 内的分页
 let searchQuery = '';
@@ -553,7 +483,6 @@ function openPanel() {
                 <div class="cv-search-wrap">
                     <input type="text" class="cv-search" id="cv_search" placeholder="搜索角色名 / 聊天标题 / 标签…" />
                 </div>
-                <button class="cv-icon-btn" id="cv_refresh" title="强制刷新（重新加载所有聊天档案）">↻</button>
                 <button class="cv-icon-btn" id="cv_close" title="关闭 (Esc)">✕</button>
             </div>
             <div class="cv-tabbar">
@@ -575,7 +504,6 @@ function openPanel() {
     document.body.appendChild(panelEl);
 
     document.getElementById('cv_close').onclick = closePanel;
-    document.getElementById('cv_refresh').onclick = forceRefreshAll;
     document.getElementById('cv_search').oninput = (e) => {
         searchQuery = e.target.value.trim();
         currentPage = 1;
@@ -634,66 +562,14 @@ function setStatus(text) {
  *  数据加载
  * ============================================================ */
 
-// 用 chat_size + date_last_chat 作为指纹：聊天增/删/改、消息收发
-// 都会让酒馆更新这两个字段。指纹一致 → 全局没有动过 → 可走缓存。
-// 注意：c.chat 是"当前活跃聊天文件名"，仅切换聊天时也会变，但跟我们
-// 缓存的"聊天档案列表"是否准确无关，所以**不能**纳入指纹。
-function computeFingerprint(chars) {
-    return (chars || [])
-        .map(c => `${c.avatar}|${c.chat_size ?? ''}|${c.date_last_chat ?? ''}`)
-        .sort()
-        .join('\n');
-}
-
-async function loadAll({ force = false } = {}) {
+async function loadAll() {
     const loadToken = ++loadAllToken; // 防止重复打开造成的并发污染
-    const cacheEnabled = !!loadSettings().cacheEnabled;
-
-    // 命中内存缓存（同一 session 反复开关）
-    if (!force && cacheFingerprint && Object.keys(chatsByAvatar).length) {
-        // 用内存里 ST 的 ctx.characters 算指纹（同步、零网络），命中就直接渲染
-        try {
-            await _headersReady;
-            const fresh = await fetchAllCharacters({ forceApi: false });
-            if (loadToken !== loadAllToken || !panelEl) return; // 已被新一轮加载或关闭抢占
-            if (computeFingerprint(fresh) === cacheFingerprint) {
-                charactersCache = fresh;
-                setStatus('');
-                render();
-                return;
-            }
-        } catch { /* 指纹拉取失败 → 回退到全量 */ }
-    }
-
-    // 命中持久化缓存（跨刷新 / 重启浏览器）
-    if (!force && cacheEnabled && !Object.keys(chatsByAvatar).length) {
-        try {
-            await _headersReady;
-            const persisted = readPersistedCache();
-            if (persisted && persisted.fingerprint && persisted.charactersCache && persisted.chatsByAvatar) {
-                // 同样用内存 ctx 算指纹，避免每次开面板都打 /api/characters/all
-                const fresh = await fetchAllCharacters({ forceApi: false });
-                if (loadToken !== loadAllToken || !panelEl) return; // 已被新一轮加载或关闭抢占
-                if (computeFingerprint(fresh) === persisted.fingerprint) {
-                    charactersCache = fresh;
-                    chatsByAvatar = persisted.chatsByAvatar;
-                    errorsByAvatar = persisted.errorsByAvatar || {};
-                    cacheFingerprint = persisted.fingerprint;
-                    setStatus('');
-                    render();
-                    return;
-                }
-            }
-        } catch { /* 失败 → 回退到全量 */ }
-    }
-
-    // 全量加载（首开 / 指纹不一致 / force 刷新）
     setStatus('正在初始化…');
     document.getElementById('cv_body').innerHTML = '<div class="cv-loading">正在加载…</div>';
     try {
         await _headersReady;
         setStatus('正在加载角色列表…');
-        charactersCache = await fetchAllCharacters({ forceApi: force });
+        charactersCache = await fetchAllCharacters();
         setStatus(`正在加载聊天档案…`);
 
         chatsByAvatar = {};
@@ -726,24 +602,6 @@ async function loadAll({ force = false } = {}) {
         await Promise.all(Array.from({ length: concurrency }, worker));
         if (loadToken !== loadAllToken || !panelEl) return; // 已被新一轮加载或关闭抢占
 
-        cacheFingerprint = computeFingerprint(charactersCache);
-        if (cacheEnabled) {
-            // 仅保留必要字段，避免把头像 base64 / 卡描述等大字段写进去
-            const slimChars = charactersCache.map(c => ({
-                avatar: c.avatar,
-                name: c.name,
-                chat_size: c.chat_size,
-                date_last_chat: c.date_last_chat,
-                chat: c.chat,
-            }));
-            writePersistedCache({
-                fingerprint: cacheFingerprint,
-                charactersCache: slimChars,
-                chatsByAvatar,
-                errorsByAvatar,
-            });
-        }
-
         const errCount = Object.keys(errorsByAvatar).length;
         setStatus(errCount ? `⚠ ${errCount} 个角色加载失败` : '');
         render();
@@ -753,23 +611,6 @@ async function loadAll({ force = false } = {}) {
         document.getElementById('cv_body').innerHTML =
             `<div class="cv-empty">加载失败：${escapeHtml(e.message)}</div>`;
     }
-}
-
-// 强制刷新：清掉内存指纹 + 持久化缓存（如果有），再走全量加载
-function forceRefreshAll() {
-    cacheFingerprint = null;
-    chatsByAvatar = {};
-    errorsByAvatar = {};
-    if (loadSettings().cacheEnabled) clearOwnCache();
-    loadAll({ force: true });
-}
-
-// 插件自己动了聊天（重命名/删除/导入）后调用：让下次开面板自动失效缓存。
-// 注意 chat_size/date_last_chat 在某些 ST 版本里可能不会随重命名等操作同步更新，
-// 所以不能只依赖指纹 —— 改完直接把指纹和持久化缓存一起作废，最稳。
-function invalidateCacheAfterMutation() {
-    cacheFingerprint = null;
-    if (loadSettings().cacheEnabled) clearOwnCache();
 }
 
 /* ============================================================
@@ -2141,7 +1982,6 @@ async function importChatToCharacter(character, file) {
         }
         toastr.success(`已导入到「${character.name || '当前角色'}」`);
         setStatus('✓ 已导入');
-        invalidateCacheAfterMutation();
         // 刷新该角色的聊天列表
         await reloadCharacterChats(character);
         render();
@@ -2223,7 +2063,6 @@ function openEditModal(character, fileName) {
             try {
                 setStatus('正在重命名文件…');
                 await renameChat(character.avatar, fileName, newFile);
-                invalidateCacheAfterMutation();
                 // 更新缓存
                 const list = chatsByAvatar[character.avatar] || [];
                 const item = list.find(c => c.file_name === fileName);
@@ -2338,7 +2177,6 @@ async function handleDelete(character, fileName) {
     try {
         setStatus('正在删除…');
         await deleteChat(character.avatar, fileName);
-        invalidateCacheAfterMutation();
         chatsByAvatar[character.avatar] = (chatsByAvatar[character.avatar] || [])
             .filter(c => c.file_name !== fileName);
         // 清掉本地 meta
@@ -2419,30 +2257,6 @@ function injectSettings() {
               ${THEMES.map(t => `<option value="${t.id}" ${s.theme === t.id ? 'selected' : ''}>${t.name}</option>`).join('')}
             </select>
           </div>
-
-          <div class="cv-settings-divider"></div>
-
-          <div class="cv-settings-row">
-            <label class="checkbox_label" for="cv_set_cache">
-              <input type="checkbox" id="cv_set_cache" ${s.cacheEnabled ? 'checked' : ''}>
-              <span>启用本地缓存（瞬开模式）</span>
-            </label>
-          </div>
-          <div class="cv-settings-hint">
-            把聊天列表的索引（不含正文）保存在浏览器，下次打开主面板免重新加载。
-            修改聊天后会自动检测并刷新，也可以点主面板右上角的「↻」强制刷新。
-          </div>
-          <div class="cv-settings-row" id="cv_cache_status_row">
-            <span>当前缓存大小：<b id="cv_cache_size">${formatBytes(getCacheBytes())}</b></span>
-            <button id="cv_cache_clear" class="menu_button" type="button" style="margin-left:auto">清理缓存</button>
-          </div>
-          <div class="cv-settings-hint" style="opacity:0.7">
-            ⓘ 缓存大小通常只有几十到几百 KB，体积很小，<b>一般不需要清理</b>。
-            只有在你怀疑缓存出错（看到不存在的聊天 / 改了角色名后显示不对）时再清理。
-          </div>
-
-          <div class="cv-settings-divider"></div>
-
           <div class="cv-settings-hint">
             v${VERSION} · 设置实时生效，主题切换会立即应用到已打开的面板。
           </div>
@@ -2460,29 +2274,6 @@ function injectSettings() {
         const cur = loadSettings();
         saveSettings({ ...cur, theme: e.target.value });
         if (panelEl) panelEl.className = currentThemeClass();
-    });
-    wrap.querySelector('#cv_set_cache').addEventListener('change', (e) => {
-        const cur = loadSettings();
-        saveSettings({ ...cur, cacheEnabled: !!e.target.checked });
-        // 切换不会主动写/删数据，下一次打开面板时按新设置走
-    });
-    wrap.querySelector('#cv_cache_clear').addEventListener('click', () => {
-        const bytes = getCacheBytes();
-        if (!bytes) {
-            toastr.info('当前没有本地缓存可以清理');
-            return;
-        }
-        // 二级确认（原生 confirm，强可靠，无任何"诱导操作"）
-        const ok = window.confirm(
-            `即将清除 ChatVault 在浏览器里的本地缓存（${formatBytes(bytes)}）。\n\n` +
-            `这只会删除"聊天列表索引"，不会动你的聊天文件本身、不会动酒馆其它任何数据。\n\n` +
-            `提示：缓存通常很小，没必要频繁清理。继续？`
-        );
-        if (!ok) return;
-        const removed = clearOwnCache();
-        cacheFingerprint = null;
-        wrap.querySelector('#cv_cache_size').textContent = formatBytes(getCacheBytes());
-        toastr.success(`已清理 ${removed} 项本地缓存`);
     });
 }
 
