@@ -4,7 +4,7 @@
  * https://github.com/shanye5593/SillyTavern-ChatVault
  */
 
-const VERSION = '0.3.14-test';
+const VERSION = '0.3.15-test';
 const STORAGE_KEY = 'st-chatvault-meta';
 const SETTINGS_KEY = 'st-chatvault-settings';
 // 本地缓存（瞬开模式）专用前缀；清理函数只动这个前缀，绝不波及其他 key
@@ -649,10 +649,10 @@ async function loadAll({ force = false } = {}) {
 
     // 命中内存缓存（同一 session 反复开关）
     if (!force && cacheFingerprint && Object.keys(chatsByAvatar).length) {
-        // 拉一次轻量的角色 meta 算指纹，确认没变就直接渲染
+        // 用内存里 ST 的 ctx.characters 算指纹（同步、零网络），命中就直接渲染
         try {
             await _headersReady;
-            const fresh = await fetchAllCharacters({ forceApi: cacheEnabled });
+            const fresh = await fetchAllCharacters({ forceApi: false });
             if (loadToken !== loadAllToken || !panelEl) return; // 已被新一轮加载或关闭抢占
             if (computeFingerprint(fresh) === cacheFingerprint) {
                 charactersCache = fresh;
@@ -669,7 +669,8 @@ async function loadAll({ force = false } = {}) {
             await _headersReady;
             const persisted = readPersistedCache();
             if (persisted && persisted.fingerprint && persisted.charactersCache && persisted.chatsByAvatar) {
-                const fresh = await fetchAllCharacters({ forceApi: true });
+                // 同样用内存 ctx 算指纹，避免每次开面板都打 /api/characters/all
+                const fresh = await fetchAllCharacters({ forceApi: false });
                 if (loadToken !== loadAllToken || !panelEl) return; // 已被新一轮加载或关闭抢占
                 if (computeFingerprint(fresh) === persisted.fingerprint) {
                     charactersCache = fresh;
@@ -690,7 +691,7 @@ async function loadAll({ force = false } = {}) {
     try {
         await _headersReady;
         setStatus('正在加载角色列表…');
-        charactersCache = await fetchAllCharacters({ forceApi: cacheEnabled });
+        charactersCache = await fetchAllCharacters({ forceApi: force });
         setStatus(`正在加载聊天档案…`);
 
         chatsByAvatar = {};
