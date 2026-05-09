@@ -4,7 +4,7 @@
  * https://github.com/shanye5593/SillyTavern-ChatVault
  */
 
-const VERSION = '0.3.20-test';
+const VERSION = '0.3.21-test';
 const STORAGE_KEY = 'st-chatvault-meta';
 const SETTINGS_KEY = 'st-chatvault-settings';
 const PAGE_SIZE = 50;
@@ -491,8 +491,10 @@ function openPanel() {
                 <div class="cv-search-wrap">
                     <input type="text" class="cv-search" id="cv_search" placeholder="搜索角色名 / 聊天标题 / 标签…" />
                 </div>
-                <button class="cv-icon-btn cv-refresh-btn" id="cv_refresh" title="手动刷新（重新加载所有角色和聊天）">${ICONS.refresh}</button>
-                <button class="cv-icon-btn" id="cv_close" title="关闭 (Esc)">✕</button>
+                <div class="cv-header-actions">
+                    <button class="cv-icon-btn cv-refresh-btn" id="cv_refresh" title="手动刷新（重新加载所有角色和聊天）">${ICONS.refresh}</button>
+                    <button class="cv-icon-btn" id="cv_close" title="关闭 (Esc)">✕</button>
+                </div>
             </div>
             <div class="cv-tabbar">
                 <div class="cv-tabs" id="cv_tabs">
