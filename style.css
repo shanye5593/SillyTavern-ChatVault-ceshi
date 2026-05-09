@@ -1431,3 +1431,35 @@
 @media (max-width: 480px) {
     .cv-export-grid { grid-template-columns: 1fr; }
 }
+
+/* 导出 modal: 宽一点容纳规则编辑器 + 折叠区样式 */
+.cv-modal.cv-modal-wide { max-width: 720px; width: calc(100vw - 40px); }
+.cv-export-rules {
+    margin-top: 14px;
+    border: 1px solid var(--cv-border, rgba(255,255,255,.1));
+    border-radius: 10px;
+    background: var(--cv-bg-soft, rgba(255,255,255,.02));
+}
+.cv-export-rules > summary {
+    padding: 10px 14px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    list-style: none;
+    user-select: none;
+    color: var(--cv-text, inherit);
+    display: flex; align-items: center; gap: 6px;
+}
+.cv-export-rules > summary::-webkit-details-marker { display: none; }
+.cv-export-rules > summary::before {
+    content: '▸';
+    font-size: 11px;
+    transition: transform .15s;
+    opacity: .6;
+}
+.cv-export-rules[open] > summary::before { transform: rotate(90deg); }
+.cv-export-rules-body {
+    padding: 6px 14px 14px;
+    border-top: 1px solid var(--cv-border, rgba(255,255,255,.08));
+}
+.cv-export-rules-body .cv-strip-box { background: transparent; }
