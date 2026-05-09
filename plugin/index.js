@@ -33,6 +33,8 @@ const DEFAULT_SETTINGS = {
     // 阅读模式用的处理规则（与导出独立）
     readStrip:   { ...DEFAULT_STRIP },
     readExtract: { ...DEFAULT_EXTRACT },
+    // 阅读模式版式: 'card' = 卡片流（默认）, 'article' = 书页流（宋体无框）
+    readerStyle: 'card',
 };
 
 function loadSettings() {
@@ -1145,6 +1147,8 @@ async function enterReader(character, fileName) {
     readerState.fileName = fileName;
     readerState.arr = null;
     readerState.page = 1;
+    const panel = document.getElementById('chatvault_panel');
+    if (panel) panel.classList.add('cv-in-reader');
     renderReader();
     try {
         readerState.arr = await fetchFullChat(character, fileName);
@@ -1158,6 +1162,8 @@ function exitReader() {
     readerState.active = false;
     readerState.arr = null;
     readerState.settingsOpen = false;
+    const panel = document.getElementById('chatvault_panel');
+    if (panel) panel.classList.remove('cv-in-reader');
     render();
 }
 
@@ -1166,51 +1172,47 @@ function readerCfg() {
     return {
         strip:   { ...DEFAULT_STRIP,   ...(cfg.readStrip   || {}) },
         extract: { ...DEFAULT_EXTRACT, ...(cfg.readExtract || {}) },
+        style:   cfg.readerStyle === 'article' ? 'article' : 'card',
     };
 }
 
 function renderReader() {
     const body = document.getElementById('cv_body');
     if (!body) return;
-    const { character, fileName, arr, page } = readerState;
+    const { character, fileName, arr } = readerState;
     const meta = getMetaFor(character.avatar, fileName);
     const title = meta.customTitle || fileName;
     const avatarUrl = character.avatar ? `/thumbnail?type=avatar&file=${encodeURIComponent(character.avatar)}` : '';
+    const cfgPre = readerCfg();
+    const styleAttr = cfgPre.style;
 
-    // 顶栏 + 设置按钮 + 占位
-    const headerHtml = `
-        <div class="cv-reader-header">
-            <button class="cv-reader-back" id="cv_reader_back" type="button" title="返回列表">${ICONS.arrowL}<span>返回</span></button>
-            <div class="cv-reader-title">
-                <img class="cv-reader-avatar" src="${avatarUrl}" onerror="this.style.visibility='hidden'" alt=""/>
-                <div class="cv-reader-titletext">
-                    <div class="cv-reader-charname">${escapeHtml(character.name || '')}</div>
-                    <div class="cv-reader-chatname">${escapeHtml(title)}</div>
-                </div>
-            </div>
-            <button class="cv-reader-gear" id="cv_reader_gear" type="button" title="阅读模式：摘取设置">${ICONS.gear}</button>
-        </div>
+    // 浮动按钮（绝对定位、不占文档流），不再渲染顶栏
+    const floatHtml = `
+        <button class="cv-reader-fab cv-reader-fab-back" id="cv_reader_back" type="button" title="返回列表">${ICONS.arrowL}</button>
+        <button class="cv-reader-fab cv-reader-fab-gear" id="cv_reader_gear" type="button" title="阅读模式设置">${ICONS.gear}</button>
         <div class="cv-reader-settings" id="cv_reader_settings" hidden></div>
     `;
+    const stageOpen = `<div class="cv-reader-stage" data-reader-style="${styleAttr}">${floatHtml}<div class="cv-reader-column">`;
+    const stageClose = `</div></div>`;
 
     if (!arr) {
-        body.innerHTML = headerHtml + `<div class="cv-reader-loading">正在加载完整聊天…</div>`;
+        body.innerHTML = stageOpen + `<div class="cv-reader-loading">正在加载完整聊天…</div>` + stageClose;
         bindReaderHeader();
         return;
     }
     if (arr.error) {
-        body.innerHTML = headerHtml + `<div class="cv-empty">加载失败：${escapeHtml(arr.error)}</div>`;
+        body.innerHTML = stageOpen + `<div class="cv-empty">加载失败：${escapeHtml(arr.error)}</div>` + stageClose;
         bindReaderHeader();
         return;
     }
 
-    const cfg = readerCfg();
+    const cfg = cfgPre;
     const messages = arr.slice(1); // 去掉 metadata
     const userName = arr[0]?.user_name || '用户';
     const charName = character.name || arr[0]?.character_name || '角色';
 
-    // 处理 + 缓存（依赖 cfg 序列化）
-    const cfgSig = JSON.stringify(cfg);
+    // 处理 + 缓存（依赖 strip/extract 配置，不含 style）
+    const cfgSig = JSON.stringify({ s: cfg.strip, e: cfg.extract });
     if (readerState._cfgSig !== cfgSig || !readerState._processed) {
         readerState._cfgSig = cfgSig;
         readerState._processed = messages.map((m, idx) => {
@@ -1224,6 +1226,18 @@ function renderReader() {
     if (readerState.page > totalPages) readerState.page = totalPages;
     const start = (readerState.page - 1) * READER_PAGE_SIZE;
     const slice = processed.slice(start, start + READER_PAGE_SIZE);
+
+    // 顶部小标题块（章节信息 - 角色 / 标题 / 楼层范围），轻量、不抢戏
+    const headInfoHtml = `
+        <div class="cv-reader-headinfo">
+            <img class="cv-reader-headinfo-avatar" src="${avatarUrl}" onerror="this.style.visibility='hidden'" alt=""/>
+            <div class="cv-reader-headinfo-text">
+                <div class="cv-reader-headinfo-char">${escapeHtml(character.name || '')}</div>
+                <div class="cv-reader-headinfo-title">${escapeHtml(title)}</div>
+            </div>
+            <div class="cv-reader-headinfo-meta">第 ${readerState.page} / ${totalPages} 页 · 共 ${total} 楼</div>
+        </div>
+    `;
 
     const cardHtml = slice.map(m => {
         const who = escapeHtml(m.who);
@@ -1245,17 +1259,19 @@ function renderReader() {
     }).join('');
 
     const pagerHtml = renderReaderPager(readerState.page, totalPages, total);
-    body.innerHTML = headerHtml
-        + `<div class="cv-reader-meta">共 ${total} 楼 · 每页 ${READER_PAGE_SIZE} 楼 · 共 ${totalPages} 页</div>`
+    body.innerHTML = stageOpen
+        + headInfoHtml
         + `<div class="cv-reader-list">${cardHtml || '<div class="cv-empty">没有可显示的内容</div>'}</div>`
-        + pagerHtml;
+        + `<div class="cv-reader-bottom-spacer"></div>`
+        + stageClose.replace('</div></div>', `</div>${pagerHtml}</div>`);
     bindReaderHeader();
     bindReaderPager(totalPages);
-    // 保留设置面板的开合状态（避免改一项配置就把面板关掉）
     if (readerState.settingsOpen) {
         const panel = document.getElementById('cv_reader_settings');
         if (panel) { panel.hidden = false; renderReaderSettings(panel); }
     }
+    const stage = body.querySelector('.cv-reader-stage');
+    if (stage) stage.scrollTop = 0;
     body.scrollTop = 0;
 }
 
@@ -1325,7 +1341,23 @@ function renderReaderSettings(panel) {
                 <span class="cv-switch-track"><span class="cv-switch-thumb"></span></span>
             </span>
         </label>`;
+    const curStyle = (cfg.readerStyle === 'article') ? 'article' : 'card';
     panel.innerHTML = `
+        <div class="cv-strip-box">
+            <div class="cv-strip-title">阅读版式</div>
+            <div class="cv-reader-style-row">
+                <label class="cv-reader-style-opt ${curStyle==='card'?'is-on':''}">
+                    <input type="radio" name="cv_r_style" value="card" ${curStyle==='card'?'checked':''}/>
+                    <span class="cv-reader-style-name">卡片流</span>
+                    <span class="cv-reader-style-desc">用户/角色气泡居中，通用</span>
+                </label>
+                <label class="cv-reader-style-opt ${curStyle==='article'?'is-on':''}">
+                    <input type="radio" name="cv_r_style" value="article" ${curStyle==='article'?'checked':''}/>
+                    <span class="cv-reader-style-name">书页流</span>
+                    <span class="cv-reader-style-desc">无框宋体，沉浸阅读</span>
+                </label>
+            </div>
+        </div>
         <div class="cv-strip-box">
             <div class="cv-strip-title">剥离（删掉这些标签包裹的内容）</div>
             ${sw('cv_r_s_thinking', strip.thinking, '&lt;thinking&gt;…&lt;/thinking&gt;')}
@@ -1409,6 +1441,14 @@ function renderReaderSettings(panel) {
             const base = grp === 'readStrip' ? DEFAULT_STRIP : DEFAULT_EXTRACT;
             saveSettings({ ...c, [grp]: { ...base, ...c[grp], [k]: el.checked } });
             repaint();
+        };
+    });
+    panel.querySelectorAll('input[name="cv_r_style"]').forEach(r => {
+        r.onchange = () => {
+            if (!r.checked) return;
+            const c = loadSettings();
+            saveSettings({ ...c, readerStyle: r.value === 'article' ? 'article' : 'card' });
+            renderReader();
         };
     });
 }
