@@ -1072,8 +1072,8 @@
     overflow: hidden;     /* body 自己滚动 */
     border: 1px solid var(--cv-border, rgba(255,255,255,0.14));
     border-radius: 14px;
-    background: color-mix(in srgb, var(--cv-bg-panel, #1f2230) 94%, transparent);
-    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    /* v0.3.23-test: 设置面板改为不透明（跳转模块仍保持半透明），避免读取背景文字干扰 */
+    background: var(--cv-bg-panel, #1f2230);
     box-shadow: 0 18px 48px rgba(0,0,0,0.42);
     display: flex; flex-direction: column;
 }
@@ -1081,7 +1081,13 @@
     display: flex; align-items: center; justify-content: space-between;
     padding: 10px 12px 10px 16px;
     border-bottom: 1px solid var(--cv-border, rgba(255,255,255,0.08));
-    background: color-mix(in srgb, var(--cv-bg-panel, #1f2230) 98%, transparent);
+    background: var(--cv-bg-panel, #1f2230);
+}
+/* v0.3.23-test: 设置面板打开时彻底隐藏分页器（淡出） */
+.cv-reader-pager-wrap.cv-pager-suppressed {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .15s ease;
 }
 .cv-reader-settings-title { font-size: 13px; font-weight: 600; opacity: .9; }
 .cv-reader-settings-close {
