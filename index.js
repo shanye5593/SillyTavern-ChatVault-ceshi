@@ -1575,8 +1575,9 @@ function mountRulesEditor(host, opts) {
                     r.custom = arr;
                 });
             };
-            // 失焦时才让外部重排正文（输入框已不再持有焦点，重渲安全）
-            const reflow = () => repaint();
+            // 失焦时让外部重排正文。延迟到下一个事件循环，
+            // 避免 blur 同步重渲 DOM 把刚刚触发 blur 的那个 click（删/加/开关）吞掉。
+            const reflow = () => setTimeout(repaint, 0);
             openEl.oninput = saveOnly;  openEl.onblur = reflow;
             closeEl.oninput = saveOnly; closeEl.onblur = reflow;
             row.querySelector('.cv-strip-del').onclick = () => {
