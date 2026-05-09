@@ -1491,9 +1491,11 @@
 }
 .cv-rules-modal-hint { margin-bottom: 12px; }
 
-/* v0.3.15: PC 端「最近」tab 双列网格 —— 把长条卡片变成方块块 */
+/* v0.3.15: PC 端双列网格 —— 把长条卡片变成方块块。
+   v0.3.16: 扩展到所有 tab，包含「按角色」tab 内的 cv-group-list（要用更高的选择器特异性盖掉 .cv-group.is-open .cv-group-list 的 flex） */
 @media (min-width: 721px) {
-    .cv-list-grid {
+    .cv-list-grid,
+    .cv-group.is-open .cv-list-grid.cv-group-list {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 10px;
