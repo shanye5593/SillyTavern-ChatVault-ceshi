@@ -1255,16 +1255,14 @@ function renderReader() {
 
     const cfg = cfgPre;
     const messages = arr.slice(1); // 去掉 metadata
-    // user 名字 / 头像：从酒馆全局取，metadata 里的 user_name 经常是 'unused'
-    let userName = '用户';
-    let userAvatarUrl = '';
-    try {
-        const ctx = SillyTavern.getContext();
-        userName = ctx?.name1 || ctx?.user?.name || arr[0]?.user_name || '用户';
-        const ua = ctx?.user_avatar || ctx?.userAvatar;
-        if (ua) userAvatarUrl = `/User Avatars/${encodeURIComponent(ua)}`;
-    } catch { userName = arr[0]?.user_name || '用户'; }
-    if (userName === 'unused') userName = '用户';
+    // user 名字：从聊天记录本身取（每条 user 消息的 m.name 就是当时的用户名）
+    // metadata.user_name 经常是 'unused'，而 ctx.name1 是"当前"人设、不是这条聊天用的，会跨档串名
+    // 头像：聊天文件不存 user 头像信息，无法准确还原"当时"的头像 —— 统一用首字徽章，不显示图片
+    const firstUserMsg = messages.find(m => m && m.is_user);
+    const recordedUserName = (firstUserMsg && firstUserMsg.name && firstUserMsg.name !== 'unused')
+        ? firstUserMsg.name
+        : (arr[0]?.user_name && arr[0].user_name !== 'unused' ? arr[0].user_name : '');
+    const userName = recordedUserName || '你';
     const charName = character.name || arr[0]?.character_name || '角色';
 
     // 处理 + 缓存（依赖 strip/extract/userRules 配置，不含 style）
@@ -1277,7 +1275,10 @@ function renderReader() {
             const s = useUser ? cfg.userRules.strip : cfg.strip;
             const e = useUser ? cfg.userRules.extract : cfg.extract;
             const text = (m && typeof m.mes === 'string') ? processMessageText(m.mes, s, e) : '';
-            return { idx, who: isUser ? userName : (m?.name || charName), is_user: isUser, text };
+            // user 名字优先用消息自身记录的 m.name（兼容多 persona 聊天），否则用文件级 userName
+            const rawName = m?.name && m.name !== 'unused' ? m.name : '';
+            const who = isUser ? (rawName || userName) : (rawName || charName);
+            return { idx, who, is_user: isUser, text };
         });
     }
     const processed = readerState._processed;
@@ -1308,10 +1309,12 @@ function renderReader() {
                 .map(seg => `<p class="cv-msg-p">${escapeHtml(seg)}</p>`).join('')
               || '<span class="cv-reader-empty">（空）</span>'
             : '<span class="cv-reader-empty">（空）</span>';
-        const av = m.is_user ? userAvatarUrl : avatarUrl;
-        const avHtml = av
-            ? `<img class="cv-reader-msg-avatar" src="${av}" onerror="this.style.visibility='hidden'" alt=""/>`
-            : `<div class="cv-reader-msg-avatar cv-reader-user-avatar">${escapeHtml((m.who||'U').slice(0,1))}</div>`;
+        // user 头像聊天文件里没记录，无法准确还原历史 —— 统一用首字徽章；char 用真实头像
+        const avHtml = m.is_user
+            ? `<div class="cv-reader-msg-avatar cv-reader-user-avatar">${escapeHtml((m.who||'你').slice(0,1))}</div>`
+            : (avatarUrl
+                ? `<img class="cv-reader-msg-avatar" src="${avatarUrl}" onerror="this.style.visibility='hidden'" alt=""/>`
+                : `<div class="cv-reader-msg-avatar">${escapeHtml((m.who||'C').slice(0,1))}</div>`);
         return `
             <div class="cv-reader-msg ${m.is_user ? 'is-user' : 'is-char'}">
                 <div class="cv-reader-msg-head">
