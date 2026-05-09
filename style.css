@@ -1006,6 +1006,7 @@
 .cv-reader-stage::-webkit-scrollbar-thumb { background-color: var(--cv-border, rgba(255,255,255,0.12)); border-radius: 4px; }
 
 /* 浮动按钮：左上返回 / 右上设置；毛玻璃，不抢戏 */
+/* 注意：fab 是 cv_body 的直接子级（不是 stage 的子级），这样它才"真正悬浮"——不随 stage 内容滚动 */
 .cv-reader-fab {
     position: absolute; top: 16px; z-index: 6;
     width: 36px; height: 36px; border-radius: 50%;
@@ -1014,7 +1015,8 @@
     background: color-mix(in srgb, var(--cv-bg-panel, #1f2230) 65%, transparent);
     backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
     color: var(--cv-text-primary, inherit);
-    cursor: pointer; transition: background-color .15s, transform .15s, opacity .15s;
+    cursor: pointer;
+    transition: background-color .15s, opacity .2s ease, transform .2s ease;
     opacity: .85;
 }
 .cv-reader-fab:hover { opacity: 1; background: color-mix(in srgb, var(--cv-bg-panel, #1f2230) 85%, transparent); }
@@ -1027,10 +1029,13 @@
 .cv-reader-fab svg { width: 16px; height: 16px; }
 .cv-reader-fab-back { left: 16px; }
 .cv-reader-fab-gear { right: 16px; }
+/* autoHide 模式：返回键向左滑出、齿轮向右滑出，与分页器同步 */
+.cv-reader-fab-back.is-hidden { transform: translateX(-160%); opacity: 0; pointer-events: none; }
+.cv-reader-fab-gear.is-hidden { transform: translateX( 160%); opacity: 0; pointer-events: none; }
 
 /* 设置悬浮窗：右上角浮窗，带标题栏 + 关闭，不顶开正文 */
 .cv-reader-settings[hidden] { display: none !important; }   /* 类选择器的 display:flex 会覆盖 [hidden] 的 display:none */
-.cv-reader-stage > .cv-reader-settings {
+#chatvault_panel.cv-in-reader .cv-body > .cv-reader-settings {
     position: absolute; top: 60px; right: 16px; z-index: 7;
     width: min(440px, calc(100% - 32px));
     max-height: calc(100% - 80px);
@@ -1139,10 +1144,28 @@
 .cv-reader-msg-who { font-weight: 600; }
 .cv-reader-msg-floor { margin-left: auto; opacity: .5; font-size: 11px; font-variant-numeric: tabular-nums; }
 .cv-reader-msg-body {
-    font-size: 14.5px; line-height: 1.85;
+    font-size: var(--cv-reader-font-size, 15px);
+    line-height: 1.85;
     word-break: break-word; white-space: normal;
 }
+.cv-reader-msg-body .cv-msg-p { margin: 0 0 0.6em; }
+.cv-reader-msg-body .cv-msg-p:last-child { margin-bottom: 0; }
+/* 段落首行缩进（仅当 stage[data-indent="1"]）；空段落不缩进 */
+.cv-reader-stage[data-indent="1"] .cv-reader-msg-body .cv-msg-p { text-indent: 2em; }
 .cv-reader-empty { opacity: .5; font-style: italic; }
+
+/* 字号滑块行 */
+.cv-reader-fontsize-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 4px 0 8px;
+}
+.cv-reader-fontsize-row input[type="range"] {
+    flex: 1; min-width: 0; accent-color: var(--cv-accent, #6e8efb);
+}
+.cv-reader-fontsize-val {
+    font-size: 12px; opacity: .7; font-variant-numeric: tabular-nums;
+    min-width: 42px; text-align: right;
+}
 
 /* 底部留白，给浮动分页器让位 */
 .cv-reader-bottom-spacer { height: 96px; }
@@ -1230,8 +1253,8 @@
     .cv-reader-stage[data-reader-style="article"] .cv-reader-column { max-width: 100%; }
     .cv-reader-headinfo-meta { display: none; }
     .cv-reader-msg { padding: 10px 12px; }
-    .cv-reader-msg-body { font-size: 14px; line-height: 1.75; }
-    .cv-reader-stage[data-reader-style="article"] .cv-reader-msg-body { font-size: 15px; line-height: 1.9; }
+    .cv-reader-msg-body { line-height: 1.75; }
+    .cv-reader-stage[data-reader-style="article"] .cv-reader-msg-body { line-height: 1.9; }
     .cv-reader-fab { width: 32px; height: 32px; top: 10px; }
     .cv-reader-fab-back { left: 10px; }
     .cv-reader-fab-gear { right: 10px; }
