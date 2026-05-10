@@ -1851,3 +1851,24 @@
     border-color: #d66;
     background: rgba(214, 102, 102, 0.08);
 }
+
+/* ---------- 阅读模式：卡片头部缩放（头像 / 角色名 / 楼层号） ---------- */
+.cv-reader-stage { --cv-reader-head-scale: 1; }
+.cv-reader-stage .cv-reader-msg-avatar {
+    width: calc(24px * var(--cv-reader-head-scale, 1));
+    height: calc(24px * var(--cv-reader-head-scale, 1));
+    font-size: calc(12px * var(--cv-reader-head-scale, 1));
+}
+.cv-reader-stage .cv-reader-msg-head {
+    font-size: calc(12px * var(--cv-reader-head-scale, 1));
+    gap: calc(8px * var(--cv-reader-head-scale, 1));
+}
+.cv-reader-stage .cv-reader-msg-floor {
+    font-size: calc(11px * var(--cv-reader-head-scale, 1));
+}
+
+/* ---------- 设置面板间距修正：strip-box 内 hint 与下方选项块的呼吸感 ---------- */
+.cv-strip-box .cv-field-hint {
+    margin-top: -4px;
+    margin-bottom: 12px;
+}

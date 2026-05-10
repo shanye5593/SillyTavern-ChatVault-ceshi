@@ -4,7 +4,7 @@
  * https://github.com/shanye5593/SillyTavern-ChatVault
  */
 
-const VERSION = '0.3.34-test';
+const VERSION = '0.3.35-test';
 const STORAGE_KEY = 'st-chatvault-meta';
 const SETTINGS_KEY = 'st-chatvault-settings';
 const PAGE_SIZE = 50;
@@ -12,7 +12,7 @@ const THEMES = [
     { id: 'dark',   name: '夜间 Dark' },
     { id: 'light',  name: '白底 Light' },
     { id: 'coffee', name: '咖啡 Coffee' },
-    { id: 'custom', name: '🎨 自定义（使用下方配色面板）' },
+    { id: 'custom', name: '自定义（使用下方配色面板）' },
 ];
 const DEFAULT_STRIP = {
     thinking: true,
@@ -1281,6 +1281,7 @@ function readerCfg() {
     const cfg = loadSettings();
     const u = { ...DEFAULT_USER_RULES, ...(cfg.userRules || {}) };
     const fs = Number(cfg.readerFontSize);
+    const hs = Number(cfg.readerHeadScale);
     return {
         strip:   { ...DEFAULT_STRIP,   ...(cfg.strip   || {}) },
         extract: { ...DEFAULT_EXTRACT, ...(cfg.extract || {}) },
@@ -1291,6 +1292,7 @@ function readerCfg() {
         },
         pagerMode: cfg.readerPagerMode === 'always' ? 'always' : 'autoHide',
         fontSize: (Number.isFinite(fs) && fs >= 12 && fs <= 24) ? fs : 15,
+        headScale: (Number.isFinite(hs) && hs >= 0.8 && hs <= 1.8) ? hs : 1.0,
         indent: !!cfg.readerIndent,
     };
 }
@@ -1306,7 +1308,7 @@ function renderReader() {
 
     // 悬浮覆层（按钮 + 设置面板 + 分页器都从 stage 移出，作为 cv_body 的直接子节点）
     // 这样它们才真正"悬浮"——不会随 stage 滚动消失
-    const stageStyle = `--cv-reader-font-size:${cfgPre.fontSize}px`;
+    const stageStyle = `--cv-reader-font-size:${cfgPre.fontSize}px;--cv-reader-head-scale:${cfgPre.headScale}`;
     const stageOpen = `<div class="cv-reader-stage" data-pager-mode="${cfgPre.pagerMode}" data-indent="${cfgPre.indent ? '1' : '0'}" style="${stageStyle}"><div class="cv-reader-column">`;
     const stageClose = `</div></div>`;
     const overlayHtml = `
@@ -1789,6 +1791,13 @@ function renderReaderSettings(panel) {
                 </div>
                 ${sw('cv_r_indent', !!cfg.readerIndent, '段落首行缩进 2 字')}
             </div>
+            <div class="cv-strip-box" id="cv_r_headscale_box">
+                <div class="cv-strip-title">卡片头部大小（头像 / 角色名 / 楼层号）</div>
+                <div class="cv-reader-fontsize-row">
+                    <input type="range" id="cv_r_headscale" min="0.8" max="1.8" step="0.05" value="${(Number(cfg.readerHeadScale) || 1).toFixed(2)}"/>
+                    <span class="cv-reader-fontsize-val" id="cv_r_headscale_val">${Math.round((Number(cfg.readerHeadScale) || 1) * 100)}%</span>
+                </div>
+            </div>
             <div class="cv-strip-box">
                 <div class="cv-strip-title">
                     user 头像（仅本聊天）
@@ -1863,6 +1872,23 @@ function renderReaderSettings(panel) {
         };
         fsInput.oninput  = () => apply(false);
         fsInput.onchange = () => apply(true);
+    }
+    // 卡片头部缩放滑块
+    const hsInput = document.getElementById('cv_r_headscale');
+    const hsVal   = document.getElementById('cv_r_headscale_val');
+    if (hsInput) {
+        const apply = (save) => {
+            const v = Math.max(0.8, Math.min(1.8, Number(hsInput.value) || 1));
+            if (hsVal) hsVal.textContent = Math.round(v * 100) + '%';
+            const stage = document.querySelector('.cv-reader-stage');
+            if (stage) stage.style.setProperty('--cv-reader-head-scale', String(v));
+            if (save) {
+                const c = loadSettings();
+                saveSettings({ ...c, readerHeadScale: v });
+            }
+        };
+        hsInput.oninput  = () => apply(false);
+        hsInput.onchange = () => apply(true);
     }
     // 首行缩进开关
     const indentSw = document.getElementById('cv_r_indent');
@@ -2688,9 +2714,9 @@ function injectSettings() {
             </div>
             <div class="inline-drawer-content">
               <div class="cv-settings-hint" style="margin-bottom:8px;">
-                💡 按上下顺序排优先级；浏览器会逐字符回退到第一个有该字形的字体。<br>
+                按上下顺序排优先级；浏览器会逐字符回退到第一个有该字形的字体。<br>
                 例如想英/日/中混排都好看：英文字体放第一，日文字体放第二，中文字体放第三。<br>
-                ⚠️ URL 字体由浏览器直接请求该地址，请确认来源可信；只在 ChatVault 内生效，不影响酒馆其它界面。
+                URL 字体由浏览器直接请求该地址，请确认来源可信；只在 ChatVault 内生效，不影响酒馆其它界面。
               </div>
               <div id="cv_font_list" class="cv-font-list"></div>
               <div class="cv-settings-row">
@@ -2702,14 +2728,10 @@ function injectSettings() {
           <!-- 自定义配色（折叠；仅当配色方案 = 自定义 时显示） -->
           <div id="cv_color_drawer_wrap" class="inline-drawer cv-sub-drawer" style="display:${s.theme === 'custom' ? 'block' : 'none'};">
             <div class="inline-drawer-toggle inline-drawer-header">
-              <b>🎨 自定义配色面板</b>
+              <b>自定义配色面板</b>
               <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
             </div>
             <div class="inline-drawer-content">
-              <div class="cv-settings-hint" style="margin-bottom:8px;">
-                💡 只在「配色方案 = 🎨 自定义」时生效；切回其它方案会自动恢复主题原色（自定义参数仍保留，下次切回来还在）。<br>
-                每项独立可调，未调的字段使用暗色基准；按 × 清除该项即回退到基准色。
-              </div>
               <div id="cv_color_grid" class="cv-color-grid"></div>
               <div class="cv-settings-row" style="margin-top:8px;">
                 <button id="cv_color_reset_all" class="menu_button cv-inline-btn">⟲ 全部恢复基准</button>
@@ -2720,7 +2742,7 @@ function injectSettings() {
           <!-- PC 端窗口设置（折叠，默认收起防止手机端误触） -->
           <div class="inline-drawer cv-sub-drawer">
             <div class="inline-drawer-toggle inline-drawer-header">
-              <b>🖥️ PC 端窗口设置（手机端无效）</b>
+              <b>PC 端窗口设置（手机端无效）</b>
               <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
             </div>
             <div class="inline-drawer-content">
@@ -2744,8 +2766,8 @@ function injectSettings() {
                 <button id="cv_set_window_reset" class="menu_button cv-inline-btn">⟲ 复位窗口位置/缩放</button>
               </div>
               <div class="cv-settings-hint">
-                🖥️ 拖标题栏移动；右下角 ⌟ 角等比缩放（0.4×–3.0×，不会破坏内部排版）；状态自动记忆。<br>
-                ⚠️ 自定义快捷键时请避开酒馆/浏览器已用组合（如 Ctrl+S、F5）；在输入框焦点时快捷键不会触发。
+                拖标题栏移动；右下角 ⌟ 角等比缩放（0.4×–3.0×，不会破坏内部排版）；状态自动记忆。<br>
+                自定义快捷键时请避开酒馆/浏览器已用组合（如 Ctrl+S、F5）；在输入框焦点时快捷键不会触发。
               </div>
             </div>
           </div>
