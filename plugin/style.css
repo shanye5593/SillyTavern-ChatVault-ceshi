@@ -1628,12 +1628,30 @@
         background: transparent;
         touch-action: none;
     }
-    .cv-resize-handle.cv-rh-n  { top: -3px;    left: 8px;    right: 8px;   height: 6px;  cursor: n-resize; }
-    .cv-resize-handle.cv-rh-s  { bottom: -3px; left: 8px;    right: 8px;   height: 6px;  cursor: s-resize; }
-    .cv-resize-handle.cv-rh-w  { left: -3px;   top: 8px;     bottom: 8px;  width: 6px;   cursor: w-resize; }
-    .cv-resize-handle.cv-rh-e  { right: -3px;  top: 8px;     bottom: 8px;  width: 6px;   cursor: e-resize; }
-    .cv-resize-handle.cv-rh-nw { top: -4px;    left: -4px;   width: 14px;  height: 14px; cursor: nw-resize; }
-    .cv-resize-handle.cv-rh-ne { top: -4px;    right: -4px;  width: 14px;  height: 14px; cursor: ne-resize; }
-    .cv-resize-handle.cv-rh-sw { bottom: -4px; left: -4px;   width: 14px;  height: 14px; cursor: sw-resize; }
-    .cv-resize-handle.cv-rh-se { bottom: -4px; right: -4px;  width: 14px;  height: 14px; cursor: se-resize; }
+    /* 把手全部贴边内嵌，避免被 #chatvault_panel { overflow:hidden } 裁掉 */
+    .cv-resize-handle.cv-rh-n  { top: 0;     left: 14px;  right: 14px; height: 6px;  cursor: n-resize; }
+    .cv-resize-handle.cv-rh-s  { bottom: 0;  left: 14px;  right: 14px; height: 6px;  cursor: s-resize; }
+    .cv-resize-handle.cv-rh-w  { left: 0;    top: 14px;   bottom: 14px; width: 6px;  cursor: w-resize; }
+    .cv-resize-handle.cv-rh-e  { right: 0;   top: 14px;   bottom: 14px; width: 6px;  cursor: e-resize; }
+    .cv-resize-handle.cv-rh-nw { top: 0;     left: 0;     width: 14px;  height: 14px; cursor: nw-resize; }
+    .cv-resize-handle.cv-rh-ne { top: 0;     right: 0;    width: 14px;  height: 14px; cursor: ne-resize; }
+    .cv-resize-handle.cv-rh-sw { bottom: 0;  left: 0;     width: 14px;  height: 14px; cursor: sw-resize; }
+    .cv-resize-handle.cv-rh-se { bottom: 0;  right: 0;    width: 14px;  height: 14px; cursor: se-resize; }
+
+    /* hover 时淡淡高亮一下，让用户知道把手位置 */
+    #chatvault_panel .cv-resize-handle:hover {
+        background: var(--cv-accent, #6e8efb);
+        opacity: 0.25;
+    }
+    /* 右下角再画一个 ⌟ 视觉指示，最常用的拉伸位置 */
+    #chatvault_panel .cv-resize-handle.cv-rh-se::after {
+        content: '';
+        position: absolute;
+        right: 2px; bottom: 2px;
+        width: 8px; height: 8px;
+        border-right: 2px solid var(--cv-text-secondary, rgba(255,255,255,0.35));
+        border-bottom: 2px solid var(--cv-text-secondary, rgba(255,255,255,0.35));
+        border-bottom-right-radius: 2px;
+        pointer-events: none;
+    }
 }
