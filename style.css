@@ -1896,143 +1896,13 @@
     margin-right: auto;
 }
 
-/* —— 右键 / 长按消息菜单 —— */
-.cv-msg-menu {
-    position: fixed;
-    z-index: 99999;
-    min-width: 168px;
-    background: var(--cv-bg-panel, #1f2230);
-    color: var(--cv-text, #e4e5e7);
-    border: 1px solid var(--cv-border, rgba(255,255,255,0.14));
-    border-radius: 10px;
-    box-shadow: 0 10px 28px rgba(0,0,0,0.45);
-    padding: 4px;
-    display: flex;
-    flex-direction: column;
-}
-.cv-msg-menu button {
-    background: transparent;
-    border: 0;
-    color: inherit;
-    padding: 9px 12px;
-    text-align: left;
-    cursor: pointer;
-    border-radius: 6px;
-    font-size: 13px;
-    font-family: inherit;
-}
-.cv-msg-menu button:hover {
-    background: color-mix(in srgb, currentColor 12%, transparent);
-}
-
-/* —— 跳转后短暂高亮 —— */
-.cv-reader-msg.cv-bookmark-flash {
-    animation: cv-bm-flash 1.5s ease-out;
-}
-@keyframes cv-bm-flash {
-    0%   { box-shadow: 0 0 0 3px var(--cv-accent, #6e8efb), 0 0 18px 2px color-mix(in srgb, var(--cv-accent, #6e8efb) 60%, transparent); }
-    100% { box-shadow: 0 0 0 0 transparent, 0 0 0 0 transparent; }
-}
-
-/* —— 书签预览 modal 内容块 —— */
-.cv-bm-preview {
-    font-size: 13px;
-    padding: 8px 10px;
-    background: color-mix(in srgb, currentColor 6%, transparent);
-    border-radius: 6px;
-    opacity: .85;
-    word-break: break-word;
-    white-space: pre-wrap;
-}
-
-/* —— 书签设置面板分组 —— */
-.cv-bm-box .cv-bm-toggle {
-    cursor: pointer;
-    display: flex !important;
-    align-items: center;
-    justify-content: space-between;
-    user-select: none;
-    margin-bottom: 0;
-}
-.cv-bm-chev {
-    transition: transform .2s;
-    opacity: .6;
-    font-size: 14px;
-}
-.cv-bm-box[data-collapsed="0"] .cv-bm-chev { transform: rotate(180deg); }
-.cv-bm-body {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    margin-top: 8px;
-}
-.cv-bm-item {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    background: color-mix(in srgb, currentColor 5%, transparent);
-    border-radius: 6px;
-    overflow: hidden;
-}
-.cv-bm-jump {
-    flex: 1;
-    background: transparent;
-    border: 0;
-    color: inherit;
-    padding: 8px 10px;
-    text-align: left;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    min-width: 0;
-    font-family: inherit;
-}
-.cv-bm-jump:hover { background: color-mix(in srgb, currentColor 8%, transparent); }
-.cv-bm-floor {
-    font-variant-numeric: tabular-nums;
-    font-size: 12px;
-    opacity: .65;
-    flex-shrink: 0;
-}
-.cv-bm-text {
-    flex: 1;
-    font-size: 13px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    min-width: 0;
-}
-.cv-bm-snippet {
-    font-size: 11px;
-    opacity: .45;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 38%;
-    flex-shrink: 0;
-}
-.cv-bm-del {
-    background: transparent;
-    border: 0;
-    color: inherit;
-    opacity: .4;
-    cursor: pointer;
-    padding: 8px;
-    flex-shrink: 0;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-}
-.cv-bm-del:hover { opacity: 1; color: var(--cv-danger, #e06c75); }
-.cv-bm-del svg { width: 14px; height: 14px; }
-
 
 /* ============================================================
- * v0.4.3 楼层号变可点 chip：常态浅灰、有书签时填充 accent 色
+ * v0.4.4 书签：菜单 / 设置列表 / 楼层 chip —— 全部走主题变量
  * ============================================================ */
+
+/* —— 楼层号按钮 chip —— */
 .cv-reader-msg-floor {
-    /* 重置 button 默认样式（继承自原 span 视觉） */
     background: transparent;
     border: 1px solid transparent;
     color: inherit;
@@ -2048,21 +1918,160 @@
     transition: background .15s, border-color .15s, opacity .15s, color .15s;
     white-space: nowrap;
     flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
 }
 .cv-reader-msg-floor:hover {
     opacity: 1;
-    background: color-mix(in srgb, currentColor 10%, transparent);
+    background: var(--cv-accent-muted);
+    color: var(--cv-accent);
 }
-/* 有书签的楼：填充 chip + 完整不透明 + 主题色描边 */
+.cv-reader-msg-floor svg { width: 11px; height: 11px; }
+.cv-reader-msg-floor .cv-floor-num { display: inline-block; }
+
+/* 已加书签的楼：填充 chip + 主色 */
 .cv-reader-msg-floor.is-bm {
     opacity: 1;
-    background: color-mix(in srgb, var(--cv-accent, #6e8efb) 22%, transparent);
-    border-color: color-mix(in srgb, var(--cv-accent, #6e8efb) 55%, transparent);
-    color: var(--cv-accent, #6e8efb);
+    background: var(--cv-accent-muted);
+    border-color: var(--cv-accent);
+    color: var(--cv-accent);
     font-weight: 600;
-    padding: 2px 9px 2px 7px;
 }
 .cv-reader-msg-floor.is-bm:hover {
-    background: color-mix(in srgb, var(--cv-accent, #6e8efb) 32%, transparent);
+    background: var(--cv-accent);
+    color: var(--cv-bg-panel);
 }
-/* 排版：左右分（dialog）下，user 消息楼层号靠左了，重置 margin 已在外面处理 */
+
+/* —— 弹出菜单（继承 cv-theme-* 变量） —— */
+.cv-msg-menu {
+    position: fixed;
+    z-index: 99999;
+    min-width: 168px;
+    background: var(--cv-bg-panel);
+    color: var(--cv-text-primary);
+    border: 1px solid var(--cv-border);
+    border-radius: var(--cv-radius-card, 8px);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+    padding: 4px;
+    display: flex;
+    flex-direction: column;
+}
+.cv-msg-menu button {
+    background: transparent;
+    border: 0;
+    color: inherit;
+    padding: 9px 12px;
+    text-align: left;
+    cursor: pointer;
+    border-radius: 6px;
+    font-size: 13px;
+    font-family: inherit;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.cv-msg-menu button svg {
+    width: 14px; height: 14px;
+    flex-shrink: 0;
+    opacity: .75;
+}
+.cv-msg-menu button:hover {
+    background: var(--cv-accent-muted);
+    color: var(--cv-accent);
+}
+.cv-msg-menu button:hover svg { opacity: 1; }
+.cv-msg-menu button.cv-msg-menu-danger:hover {
+    background: var(--cv-danger-bg);
+    color: var(--cv-danger);
+}
+
+/* —— 设置面板「书签」分组 —— */
+.cv-bm-box .cv-bm-toggle {
+    cursor: pointer;
+    display: flex !important;
+    align-items: center;
+    justify-content: space-between;
+    user-select: none;
+    margin-bottom: 0;
+}
+.cv-bm-title-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+}
+.cv-bm-title-label svg {
+    width: 14px; height: 14px;
+    color: var(--cv-accent);
+}
+.cv-bm-chev {
+    transition: transform .2s;
+    opacity: .5;
+    font-size: 14px;
+}
+.cv-bm-box[data-collapsed="0"] .cv-bm-chev { transform: rotate(180deg); }
+.cv-bm-body {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 8px;
+}
+.cv-bm-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--cv-bg-card);
+    border: 1px solid var(--cv-border-soft);
+    border-radius: 6px;
+    overflow: hidden;
+}
+.cv-bm-item:hover { border-color: var(--cv-border); }
+.cv-bm-jump {
+    flex: 1;
+    background: transparent;
+    border: 0;
+    color: inherit;
+    padding: 8px 10px;
+    text-align: left;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    font-family: inherit;
+}
+.cv-bm-jump:hover { background: var(--cv-accent-muted); color: var(--cv-accent); }
+.cv-bm-floor {
+    font-variant-numeric: tabular-nums;
+    font-size: 12px;
+    opacity: .65;
+    flex-shrink: 0;
+}
+.cv-bm-jump:hover .cv-bm-floor { opacity: 1; }
+.cv-bm-text {
+    flex: 1;
+    font-size: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+}
+.cv-bm-del {
+    background: transparent;
+    border: 0;
+    color: inherit;
+    opacity: .4;
+    cursor: pointer;
+    padding: 8px;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background .15s, color .15s, opacity .15s;
+}
+.cv-bm-del:hover {
+    opacity: 1;
+    color: var(--cv-danger);
+    background: var(--cv-danger-bg);
+}
+.cv-bm-del svg { width: 14px; height: 14px; }
