@@ -4,7 +4,7 @@
  * https://github.com/shanye5593/SillyTavern-ChatVault
  */
 
-const VERSION = '0.4.4-test';
+const VERSION = '0.4.5-test';
 const STORAGE_KEY = 'st-chatvault-meta';
 const SETTINGS_KEY = 'st-chatvault-settings';
 const PAGE_SIZE = 50;
@@ -2002,15 +2002,25 @@ function renderReaderSettings(panel) {
             <button class="cv-reader-settings-close" id="cv_r_close" type="button" title="关闭">×</button>
         </div>
         <div class="cv-reader-settings-body">
-            <div class="cv-strip-box">
-                <div class="cv-strip-title">配色方案</div>
-                <div class="cv-reader-style-row">
-                    ${THEMES.map(t => `
-                        <label class="cv-reader-style-opt ${curTheme===t.id?'is-on':''}">
-                            <input type="radio" name="cv_r_theme" value="${t.id}" ${curTheme===t.id?'checked':''}/>
-                            <span class="cv-reader-style-name">${escapeHtml(t.name)}</span>
-                        </label>
-                    `).join('')}
+            <div class="cv-strip-box cv-bm-box" data-collapsed="${ (rChar.avatar && rFile && getBookmarks(rChar.avatar, rFile).length) ? '0' : '1' }">
+                <div class="cv-strip-title cv-bm-toggle" id="cv_r_bm_toggle">
+                    <span class="cv-bm-title-label">${ICONS.bookmark}<span>书签 (${ (rChar.avatar && rFile) ? getBookmarks(rChar.avatar, rFile).length : 0 })</span></span>
+                    <span class="cv-bm-chev">▾</span>
+                </div>
+                <div class="cv-bm-body" id="cv_r_bm_body" ${ (rChar.avatar && rFile && getBookmarks(rChar.avatar, rFile).length) ? '' : 'hidden' }>
+                    ${ (() => {
+                        const _list = (rChar.avatar && rFile) ? getBookmarks(rChar.avatar, rFile) : [];
+                        if (!_list.length) return '<div class="cv-field-hint">还没有书签。阅读时点击消息右上角的楼层号 <code>#N</code> 即可添加。</div>';
+                        return _list.map(b => `
+                            <div class="cv-bm-item" data-idx="${b.idx}">
+                                <button class="cv-bm-jump" type="button" title="跳转到 #${b.idx}">
+                                    <span class="cv-bm-floor">#${b.idx}</span>
+                                    <span class="cv-bm-text">${escapeHtml(b.note || `楼层 ${b.idx}`)}</span>
+                                </button>
+                                <button class="cv-bm-del" type="button" title="删除">${ICONS.trash}</button>
+                            </div>
+                        `).join('');
+                    })() }
                 </div>
             </div>
             <div class="cv-strip-box">
@@ -2050,7 +2060,7 @@ function renderReaderSettings(panel) {
                     </label>
                 </div>
             </div>
-                        <div class="cv-strip-box">
+            <div class="cv-strip-box">
                 <div class="cv-strip-title">正文字号</div>
                 <div class="cv-reader-fontsize-row">
                     <input type="range" id="cv_r_fontsize" min="13" max="28" step="0.5" value="${cfg.readerFontSize || 15}"/>
@@ -2063,6 +2073,17 @@ function renderReaderSettings(panel) {
                 <div class="cv-reader-fontsize-row">
                     <input type="range" id="cv_r_headscale" min="0.8" max="1.8" step="0.05" value="${(Number(cfg.readerHeadScale) || 1).toFixed(2)}"/>
                     <span class="cv-reader-fontsize-val" id="cv_r_headscale_val">${Math.round((Number(cfg.readerHeadScale) || 1) * 100)}%</span>
+                </div>
+            </div>
+            <div class="cv-strip-box">
+                <div class="cv-strip-title">配色方案</div>
+                <div class="cv-reader-style-row">
+                    ${THEMES.map(t => `
+                        <label class="cv-reader-style-opt ${curTheme===t.id?'is-on':''}">
+                            <input type="radio" name="cv_r_theme" value="${t.id}" ${curTheme===t.id?'checked':''}/>
+                            <span class="cv-reader-style-name">${escapeHtml(t.name)}</span>
+                        </label>
+                    `).join('')}
                 </div>
             </div>
             <div class="cv-strip-box">
@@ -2097,27 +2118,6 @@ function renderReaderSettings(panel) {
                     </div>
                     <div class="cv-field-hint" style="margin-top:6px">当前已绑定：${boundUA ? `<code>${escapeHtml(boundUA)}</code>` : '（无）'}</div>
                 `}
-            </div>
-            <div class="cv-strip-box cv-bm-box" data-collapsed="${ (rChar.avatar && rFile && getBookmarks(rChar.avatar, rFile).length) ? '0' : '1' }">
-                <div class="cv-strip-title cv-bm-toggle" id="cv_r_bm_toggle">
-                    <span class="cv-bm-title-label">${ICONS.bookmark}<span>书签 (${ (rChar.avatar && rFile) ? getBookmarks(rChar.avatar, rFile).length : 0 })</span></span>
-                    <span class="cv-bm-chev">▾</span>
-                </div>
-                <div class="cv-bm-body" id="cv_r_bm_body" ${ (rChar.avatar && rFile && getBookmarks(rChar.avatar, rFile).length) ? '' : 'hidden' }>
-                    ${ (() => {
-                        const _list = (rChar.avatar && rFile) ? getBookmarks(rChar.avatar, rFile) : [];
-                        if (!_list.length) return '<div class="cv-field-hint">还没有书签。阅读时桌面端右键 / 移动端长按消息即可添加。</div>';
-                        return _list.map(b => `
-                            <div class="cv-bm-item" data-idx="${b.idx}">
-                                <button class="cv-bm-jump" type="button" title="跳转到 #${b.idx}">
-                                    <span class="cv-bm-floor">#${b.idx}</span>
-                                    <span class="cv-bm-text">${escapeHtml(b.note || `楼层 ${b.idx}`)}</span>
-                                </button>
-                                <button class="cv-bm-del" type="button" title="删除">${ICONS.trash}</button>
-                            </div>
-                        `).join('');
-                    })() }
-                </div>
             </div>
                         <div class="cv-reader-settings-hint">摘取规则已搬到主面板每张卡片折叠区的「摘取规则」按钮，阅读 / 导出共用一套</div>
         </div>
