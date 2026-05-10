@@ -2026,3 +2026,43 @@
 }
 .cv-bm-del:hover { opacity: 1; color: var(--cv-danger, #e06c75); }
 .cv-bm-del svg { width: 14px; height: 14px; }
+
+
+/* ============================================================
+ * v0.4.3 楼层号变可点 chip：常态浅灰、有书签时填充 accent 色
+ * ============================================================ */
+.cv-reader-msg-floor {
+    /* 重置 button 默认样式（继承自原 span 视觉） */
+    background: transparent;
+    border: 1px solid transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    margin-left: auto;
+    padding: 2px 8px;
+    border-radius: 999px;
+    cursor: pointer;
+    opacity: .5;
+    line-height: 1.4;
+    transition: background .15s, border-color .15s, opacity .15s, color .15s;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.cv-reader-msg-floor:hover {
+    opacity: 1;
+    background: color-mix(in srgb, currentColor 10%, transparent);
+}
+/* 有书签的楼：填充 chip + 完整不透明 + 主题色描边 */
+.cv-reader-msg-floor.is-bm {
+    opacity: 1;
+    background: color-mix(in srgb, var(--cv-accent, #6e8efb) 22%, transparent);
+    border-color: color-mix(in srgb, var(--cv-accent, #6e8efb) 55%, transparent);
+    color: var(--cv-accent, #6e8efb);
+    font-weight: 600;
+    padding: 2px 9px 2px 7px;
+}
+.cv-reader-msg-floor.is-bm:hover {
+    background: color-mix(in srgb, var(--cv-accent, #6e8efb) 32%, transparent);
+}
+/* 排版：左右分（dialog）下，user 消息楼层号靠左了，重置 margin 已在外面处理 */
