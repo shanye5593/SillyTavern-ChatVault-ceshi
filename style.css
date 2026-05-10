@@ -2016,6 +2016,8 @@
     gap: 6px;
     margin-top: 8px;
 }
+/* 修复 [hidden] 默认 display:none 被 display:flex 覆盖导致折叠失效 */
+.cv-bm-body[hidden] { display: none !important; }
 .cv-bm-item {
     display: flex;
     align-items: center;
