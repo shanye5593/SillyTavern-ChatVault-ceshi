@@ -4,7 +4,7 @@
  * https://github.com/shanye5593/SillyTavern-ChatVault
  */
 
-const VERSION = '0.3.29-test';
+const VERSION = '0.3.30-test';
 const STORAGE_KEY = 'st-chatvault-meta';
 const SETTINGS_KEY = 'st-chatvault-settings';
 const PAGE_SIZE = 50;
@@ -501,7 +501,6 @@ function openPanel() {
                 </div>
                 <div class="cv-header-actions">
                     <button class="cv-icon-btn cv-refresh-btn" id="cv_refresh" title="手动刷新（重新加载所有角色和聊天）">${ICONS.refresh}</button>
-                    <button class="cv-icon-btn cv-reset-btn" id="cv_reset" title="复位窗口（清除拖动/拉伸/最大化）">⟲</button>
                     <button class="cv-icon-btn" id="cv_close" title="关闭 (Esc)">✕</button>
                 </div>
             </div>
@@ -533,7 +532,6 @@ function openPanel() {
     initWindowChrome(panelEl, _panel);
 
     document.getElementById('cv_close').onclick = closePanel;
-    document.getElementById('cv_reset').onclick = (e) => { e.stopPropagation(); resetWindow(); };
     document.getElementById('cv_refresh').onclick = (e) => {
         e.stopPropagation();
         const btn = e.currentTarget;
@@ -2318,35 +2316,61 @@ function isMobileLayout() {
     return !!(window.matchMedia && window.matchMedia('(max-width: 720px)').matches);
 }
 
-function clampRect(rect) {
-    const vw = window.innerWidth, vh = window.innerHeight;
-    const minW = 400, minH = 500;
-    let { x, y, w, h } = rect;
-    w = Math.max(minW, Math.min(w, vw));
-    h = Math.max(minH, Math.min(h, vh));
-    x = Math.max(0, Math.min(x, vw - w));
-    y = Math.max(0, Math.min(y, vh - h));
-    return { x, y, w, h };
-}
+/* ----- v0.3.30-test：改成 transform: scale 等比缩放 -----
+ * - 状态从 {x,y,w,h} 改成 {x,y,scale}
+ * - scale 范围 0.6 ~ 2.0（最大化时不受上限约束，用 fit-to-screen 实现）
+ * - 内部布局始终按"原生像素"排版，不会因为缩放错乱
+ */
+const CV_MIN_SCALE = 0.6;
+const CV_MAX_SCALE = 2.0;
 
-function getPanelRect(panel) {
+function ensureNativeSize(panel) {
+    if (panel._cvNative) return panel._cvNative;
+    // 测量必须在 transform 应用之前；此函数被首次调用时面板还没缩放过
+    const prev = panel.style.transform;
+    if (prev) panel.style.removeProperty('transform');
     const r = panel.getBoundingClientRect();
-    return { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) };
+    panel._cvNative = { w: Math.round(r.width), h: Math.round(r.height) };
+    if (prev) panel.style.setProperty('transform', prev, 'important');
+    return panel._cvNative;
 }
 
-function commitPanelRect(panel, rect) {
-    const r = clampRect(rect);
-    // 用 setProperty + 'important' 才能盖过原 CSS 里 width/height 的 !important
-    panel.style.setProperty('left',   r.x + 'px', 'important');
-    panel.style.setProperty('top',    r.y + 'px', 'important');
-    panel.style.setProperty('width',  r.w + 'px', 'important');
-    panel.style.setProperty('height', r.h + 'px', 'important');
-    return r;
+function clampState(state, nativeW, nativeH) {
+    const vw = window.innerWidth, vh = window.innerHeight;
+    let scale = Math.max(CV_MIN_SCALE, Math.min(CV_MAX_SCALE, state.scale));
+    // 屏幕装不下当前 scale 时进一步压低
+    const maxFit = Math.min(vw / nativeW, vh / nativeH);
+    if (scale > maxFit) scale = maxFit;
+    const visW = nativeW * scale, visH = nativeH * scale;
+    let x = visW >= vw ? 0 : Math.max(0, Math.min(state.x, vw - visW));
+    let y = visH >= vh ? 0 : Math.max(0, Math.min(state.y, vh - visH));
+    return { x, y, scale };
+}
+
+function applyTransform(panel, state) {
+    const { w, h } = ensureNativeSize(panel);
+    const c = clampState(state, w, h);
+    panel.style.setProperty('left',   c.x + 'px', 'important');
+    panel.style.setProperty('top',    c.y + 'px', 'important');
+    panel.style.setProperty('transform', `scale(${c.scale})`, 'important');
+    panel.style.setProperty('transform-origin', 'top left', 'important');
+    return c;
+}
+
+function getCurrentState(panel) {
+    const left = parseFloat(panel.style.left) || 0;
+    const top  = parseFloat(panel.style.top)  || 0;
+    const m = /scale\(([0-9.]+)\)/.exec(panel.style.transform || '');
+    const scale = m ? parseFloat(m[1]) : 1;
+    return { x: left, y: top, scale };
 }
 
 function saveWindowStatePartial(patch) {
     const s = loadSettings();
-    saveSettings({ ...s, windowState: { ...(s.windowState || {}), ...patch } });
+    const cur = { ...(s.windowState || {}) };
+    // 清掉旧版本残留的 w/h 字段
+    delete cur.w; delete cur.h;
+    saveSettings({ ...s, windowState: { ...cur, ...patch } });
 }
 
 function applyWindowState(overlay, panel) {
@@ -2354,24 +2378,42 @@ function applyWindowState(overlay, panel) {
     const s = loadSettings();
     if (s.windowFreeMode) overlay.classList.add('cv-window-free');
     const st = s.windowState;
-    if (st && typeof st.x === 'number' && typeof st.y === 'number'
-           && typeof st.w === 'number' && typeof st.h === 'number') {
+    if (st && typeof st.x === 'number' && typeof st.y === 'number' && typeof st.scale === 'number') {
+        // 在应用 transform 之前先量原生尺寸
+        ensureNativeSize(panel);
         overlay.classList.add('cv-window-positioned');
-        commitPanelRect(panel, st);
+        applyTransform(panel, st);
     }
-    if (st && st.maximized) panel.classList.add('cv-maximized');
+    if (st && st.maximized) {
+        // 最大化场景：用 fit-to-screen
+        ensureNativeSize(panel);
+        overlay.classList.add('cv-window-positioned');
+        panel.classList.add('cv-maximized');
+        _applyMaximizeTransform(panel);
+    }
+}
+
+function _applyMaximizeTransform(panel) {
+    const { w, h } = ensureNativeSize(panel);
+    const fit = Math.min(window.innerWidth / w, window.innerHeight / h);
+    panel.style.setProperty('left', '0px', 'important');
+    panel.style.setProperty('top', '0px', 'important');
+    panel.style.setProperty('transform', `scale(${fit})`, 'important');
+    panel.style.setProperty('transform-origin', 'top left', 'important');
 }
 
 function _ensurePositioned(overlay, panel) {
     if (overlay.classList.contains('cv-window-positioned')) return;
+    // 进入定位模式之前，面板还在 flex 居中状态，量出当前位置作为起点
+    const r = panel.getBoundingClientRect();
+    ensureNativeSize(panel);
     overlay.classList.add('cv-window-positioned');
-    commitPanelRect(panel, getPanelRect(panel));
+    applyTransform(panel, { x: Math.round(r.left), y: Math.round(r.top), scale: 1 });
 }
 
 function _onPointerEnd(panel, cleanup) {
     cleanup();
-    saveWindowStatePartial(getPanelRect(panel));
-    // 防止 pointerup 之后浏览器补发的 click 触发遮罩关闭
+    saveWindowStatePartial(getCurrentState(panel));
     _cvSuppressOverlayClick = true;
     setTimeout(() => { _cvSuppressOverlayClick = false; }, 50);
 }
@@ -2384,12 +2426,12 @@ function _bindDrag(panel, overlay, handle) {
         e.preventDefault();
         _ensurePositioned(overlay, panel);
         const startX = e.clientX, startY = e.clientY;
-        const startRect = getPanelRect(panel);
+        const startState = getCurrentState(panel);
         const move = (ev) => {
-            commitPanelRect(panel, {
-                x: startRect.x + (ev.clientX - startX),
-                y: startRect.y + (ev.clientY - startY),
-                w: startRect.w, h: startRect.h,
+            applyTransform(panel, {
+                x: startState.x + (ev.clientX - startX),
+                y: startState.y + (ev.clientY - startY),
+                scale: startState.scale,
             });
         };
         const up = () => _onPointerEnd(panel, () => {
@@ -2401,24 +2443,26 @@ function _bindDrag(panel, overlay, handle) {
     });
 }
 
-function _bindResize(panel, overlay, handle) {
+function _bindScaleResize(panel, overlay, handle) {
     handle.addEventListener('pointerdown', (e) => {
         if (panel.classList.contains('cv-maximized')) return;
         if (e.button !== 0) return;
         e.preventDefault();
         e.stopPropagation();
-        const dir = handle.dataset.dir;
         _ensurePositioned(overlay, panel);
         const startX = e.clientX, startY = e.clientY;
-        const startRect = getPanelRect(panel);
+        const startState = getCurrentState(panel);
+        const { w: nativeW, h: nativeH } = ensureNativeSize(panel);
         const move = (ev) => {
-            const dx = ev.clientX - startX, dy = ev.clientY - startY;
-            let { x, y, w, h } = startRect;
-            if (dir.includes('e')) w = startRect.w + dx;
-            if (dir.includes('s')) h = startRect.h + dy;
-            if (dir.includes('w')) { x = startRect.x + dx; w = startRect.w - dx; }
-            if (dir.includes('n')) { y = startRect.y + dy; h = startRect.h - dy; }
-            commitPanelRect(panel, { x, y, w, h });
+            const dx = ev.clientX - startX;
+            const dy = ev.clientY - startY;
+            // 取水平/垂直拖动量中较大的那个作为缩放参考，无论沿哪个方向拖都跟手
+            const delta = Math.max(dx / nativeW, dy / nativeH);
+            applyTransform(panel, {
+                x: startState.x,
+                y: startState.y,
+                scale: startState.scale + delta,
+            });
         };
         const up = () => _onPointerEnd(panel, () => {
             window.removeEventListener('pointermove', move);
@@ -2432,14 +2476,12 @@ function _bindResize(panel, overlay, handle) {
 function initWindowChrome(overlay, panel) {
     if (isMobileLayout()) return;
 
-    // 8 个 resize handle
-    ['n','s','w','e','nw','ne','sw','se'].forEach(d => {
-        const h = document.createElement('div');
-        h.className = `cv-resize-handle cv-rh-${d}`;
-        h.dataset.dir = d;
-        panel.appendChild(h);
-        _bindResize(panel, overlay, h);
-    });
+    // 只保留右下角一个缩放把手
+    const seHandle = document.createElement('div');
+    seHandle.className = 'cv-resize-handle cv-rh-se';
+    seHandle.dataset.dir = 'se';
+    panel.appendChild(seHandle);
+    _bindScaleResize(panel, overlay, seHandle);
 
     // 阅读模式下顶部一条窄拖动条（普通模式靠 header）
     const dragStrip = document.createElement('div');
@@ -2457,34 +2499,53 @@ function initWindowChrome(overlay, panel) {
         });
     }
 
-    // 视口尺寸变化：把窗口夹回可见范围
+    // 视口尺寸变化：重新夹回 / 重新 fit
     const onWinResize = () => {
         if (isMobileLayout()) return;
-        if (panel.classList.contains('cv-maximized')) return;
+        if (panel.classList.contains('cv-maximized')) {
+            _applyMaximizeTransform(panel);
+            return;
+        }
         if (!overlay.classList.contains('cv-window-positioned')) return;
-        commitPanelRect(panel, getPanelRect(panel));
+        applyTransform(panel, getCurrentState(panel));
     };
     window.addEventListener('resize', onWinResize);
 }
 
 function toggleMaximize(panel) {
     const isMax = panel.classList.toggle('cv-maximized');
+    if (isMax) {
+        _ensurePositioned(panelEl, panel);
+        _applyMaximizeTransform(panel);
+    } else {
+        const s = loadSettings();
+        const st = s.windowState || {};
+        applyTransform(panel, {
+            x: typeof st.x === 'number' ? st.x : 0,
+            y: typeof st.y === 'number' ? st.y : 0,
+            scale: typeof st.scale === 'number' ? st.scale : 1,
+        });
+    }
     saveWindowStatePartial({ maximized: isMax });
 }
 
 function resetWindow() {
-    if (!panelEl) return;
     const s = loadSettings();
     delete s.windowState;
     saveSettings(s);
+    if (!panelEl) return;
     const panel = document.getElementById('chatvault_panel');
     if (!panel) return;
     panel.classList.remove('cv-maximized');
     panelEl.classList.remove('cv-window-positioned');
     panel.style.removeProperty('left');
     panel.style.removeProperty('top');
+    panel.style.removeProperty('transform');
+    panel.style.removeProperty('transform-origin');
     panel.style.removeProperty('width');
     panel.style.removeProperty('height');
+    // 让下次拖动重新测量原生尺寸（视口可能已经变化）
+    delete panel._cvNative;
 }
 
 function parseHotkeyCombo(str) {
@@ -2620,8 +2681,11 @@ function injectSettings() {
             <label for="cv_set_hotkey_combo">快捷键组合：</label>
             <input type="text" id="cv_set_hotkey_combo" class="text_pole" value="${escapeHtml(s.windowHotkeyCombo || 'Alt+V')}" placeholder="例：Alt+V / Ctrl+Shift+K">
           </div>
+          <div class="cv-settings-row">
+            <button id="cv_set_window_reset" class="menu_button">⟲ PC 端复位窗口</button>
+          </div>
           <div class="cv-settings-hint">
-            🖥️ 桌面端：拖动标题栏移动窗口；拉边缘/角落改大小；双击标题栏最大化；标题栏「⟲」按钮可复位窗口。状态自动记忆。<br>
+            🖥️ 桌面端：拖标题栏移动窗口；右下角 ⌟ 角等比缩放（0.6×–2.0×，不会破坏内部排版）；双击标题栏切换"适配屏幕"。状态自动记忆。<br>
             📱 手机端不受影响，仍是满屏。<br>
             ⚠️ 自定义快捷键时请避开酒馆/浏览器已用组合（如 Ctrl+S、F5），否则会冲突。在输入框/聊天框里时快捷键不会触发。
           </div>
@@ -2677,6 +2741,10 @@ function injectSettings() {
             const cur = loadSettings();
             saveSettings({ ...cur, windowHotkeyCombo: (e.target.value || '').trim() || 'Alt+V' });
         }, 300);
+    });
+    wrap.querySelector('#cv_set_window_reset').addEventListener('click', (e) => {
+        e.preventDefault();
+        resetWindow();
     });
 }
 

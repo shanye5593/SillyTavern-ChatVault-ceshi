@@ -1559,13 +1559,9 @@
 
 /* 默认 hide：手机端永远拿不到这些控件 */
 #chatvault_panel .cv-resize-handle,
-#chatvault_panel .cv-drag-strip,
-#chatvault_panel .cv-reset-btn { display: none; }
+#chatvault_panel .cv-drag-strip { display: none; }
 
 @media (min-width: 721px) {
-    /* 复位按钮（桌面才显示） */
-    #chatvault_panel .cv-reset-btn { display: inline-flex; }
-
     /* 自由模式：遮罩透明 + 不拦截点击，可同时操作酒馆 */
     #chatvault_overlay.cv-window-free {
         background: transparent !important;
@@ -1575,7 +1571,8 @@
         pointer-events: auto;
     }
 
-    /* 用户拖动/拉伸/还原过位置：用绝对定位代替 flex 居中 */
+    /* 用户拖动/缩放过：用绝对定位 + transform: scale 替代 flex 居中
+     * 注意：不再改 width/height，所以内部布局完全保留原生像素，不会错乱 */
     #chatvault_overlay.cv-window-positioned {
         align-items: stretch !important;
         justify-content: stretch !important;
@@ -1583,16 +1580,11 @@
     #chatvault_overlay.cv-window-positioned #chatvault_panel {
         position: absolute !important;
         margin: 0 !important;
+        transform-origin: top left !important;
     }
 
-    /* 最大化：撑满视口 */
+    /* 最大化：等比 fit-to-screen，由 JS 直接设 transform，CSS 只去圆角 */
     #chatvault_overlay #chatvault_panel.cv-maximized {
-        position: absolute !important;
-        left: 0 !important;
-        top: 0 !important;
-        width: 100vw !important;
-        height: 100vh !important;
-        height: 100dvh !important;
         border-radius: 0 !important;
     }
     #chatvault_overlay #chatvault_panel.cv-maximized .cv-resize-handle { display: none !important; }
@@ -1620,38 +1612,30 @@
     }
     #chatvault_panel.cv-in-reader .cv-drag-strip { display: block; }
 
-    /* 8 个 resize 把手（透明、贴边） */
-    #chatvault_panel .cv-resize-handle {
+    /* 唯一的缩放把手：右下角，做大点更易抓 */
+    #chatvault_panel .cv-resize-handle.cv-rh-se {
         display: block;
         position: absolute;
-        z-index: 10;
+        bottom: 0; right: 0;
+        width: 22px; height: 22px;
+        cursor: nwse-resize;
         background: transparent;
         touch-action: none;
+        z-index: 10;
     }
-    /* 把手全部贴边内嵌，避免被 #chatvault_panel { overflow:hidden } 裁掉 */
-    .cv-resize-handle.cv-rh-n  { top: 0;     left: 14px;  right: 14px; height: 6px;  cursor: n-resize; }
-    .cv-resize-handle.cv-rh-s  { bottom: 0;  left: 14px;  right: 14px; height: 6px;  cursor: s-resize; }
-    .cv-resize-handle.cv-rh-w  { left: 0;    top: 14px;   bottom: 14px; width: 6px;  cursor: w-resize; }
-    .cv-resize-handle.cv-rh-e  { right: 0;   top: 14px;   bottom: 14px; width: 6px;  cursor: e-resize; }
-    .cv-resize-handle.cv-rh-nw { top: 0;     left: 0;     width: 14px;  height: 14px; cursor: nw-resize; }
-    .cv-resize-handle.cv-rh-ne { top: 0;     right: 0;    width: 14px;  height: 14px; cursor: ne-resize; }
-    .cv-resize-handle.cv-rh-sw { bottom: 0;  left: 0;     width: 14px;  height: 14px; cursor: sw-resize; }
-    .cv-resize-handle.cv-rh-se { bottom: 0;  right: 0;    width: 14px;  height: 14px; cursor: se-resize; }
-
-    /* hover 时淡淡高亮一下，让用户知道把手位置 */
-    #chatvault_panel .cv-resize-handle:hover {
+    #chatvault_panel .cv-resize-handle.cv-rh-se:hover {
         background: var(--cv-accent, #6e8efb);
-        opacity: 0.25;
+        opacity: 0.3;
     }
-    /* 右下角再画一个 ⌟ 视觉指示，最常用的拉伸位置 */
+    /* 角落 ⌟ 视觉指示 */
     #chatvault_panel .cv-resize-handle.cv-rh-se::after {
         content: '';
         position: absolute;
-        right: 2px; bottom: 2px;
-        width: 8px; height: 8px;
-        border-right: 2px solid var(--cv-text-secondary, rgba(255,255,255,0.35));
-        border-bottom: 2px solid var(--cv-text-secondary, rgba(255,255,255,0.35));
-        border-bottom-right-radius: 2px;
+        right: 3px; bottom: 3px;
+        width: 12px; height: 12px;
+        border-right: 2px solid var(--cv-text-secondary, rgba(255,255,255,0.45));
+        border-bottom: 2px solid var(--cv-text-secondary, rgba(255,255,255,0.45));
+        border-bottom-right-radius: 3px;
         pointer-events: none;
     }
 }
