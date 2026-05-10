@@ -4,7 +4,7 @@
  * https://github.com/shanye5593/SillyTavern-ChatVault
  */
 
-const VERSION = '0.4.6-test';
+const VERSION = '0.4.7-test';
 const STORAGE_KEY = 'st-chatvault-meta';
 const SETTINGS_KEY = 'st-chatvault-settings';
 const PAGE_SIZE = 50;
@@ -57,6 +57,10 @@ const DEFAULT_SETTINGS = {
     readerFontSize: 15,
     // 阅读模式段落首行缩进
     readerIndent: false,
+    // 阅读模式头部到正文间距 (px, 4-32)
+    readerHeadGap: 14,
+    // 阅读模式段落之间间距 (em, 0.2-1.5)
+    readerParaGap: 0.6,
     // v0.4.2 阅读模式头部排版： 'default' | 'center' | 'dialog'
     readerLayout: 'default',
     // 自定义字体（v0.3.31 起改成多字体优先级数组：[{family, url}, ...]）
@@ -1359,6 +1363,8 @@ function readerCfg() {
     const u = { ...DEFAULT_USER_RULES, ...(cfg.userRules || {}) };
     const fs = Number(cfg.readerFontSize);
     const hs = Number(cfg.readerHeadScale);
+    const hg = Number(cfg.readerHeadGap);
+    const pg = Number(cfg.readerParaGap);
     return {
         strip:   { ...DEFAULT_STRIP,   ...(cfg.strip   || {}) },
         extract: { ...DEFAULT_EXTRACT, ...(cfg.extract || {}) },
@@ -1370,6 +1376,8 @@ function readerCfg() {
         pagerMode: cfg.readerPagerMode === 'always' ? 'always' : 'autoHide',
         fontSize: (Number.isFinite(fs) && fs >= 12 && fs <= 28) ? fs : 15,
         headScale: (Number.isFinite(hs) && hs >= 0.8 && hs <= 1.8) ? hs : 1.0,
+        headGap:   (Number.isFinite(hg) && hg >= 4 && hg <= 32) ? hg : 14,
+        paraGap:   (Number.isFinite(pg) && pg >= 0.2 && pg <= 1.5) ? pg : 0.6,
         indent: !!cfg.readerIndent,
         layout: ['default','center','dialog'].includes(cfg.readerLayout) ? cfg.readerLayout : 'default',
     };
@@ -1386,7 +1394,7 @@ function renderReader() {
 
     // 悬浮覆层（按钮 + 设置面板 + 分页器都从 stage 移出，作为 cv_body 的直接子节点）
     // 这样它们才真正"悬浮"——不会随 stage 滚动消失
-    const stageStyle = `--cv-reader-font-size:${cfgPre.fontSize}px;--cv-reader-head-scale:${cfgPre.headScale}`;
+    const stageStyle = `--cv-reader-font-size:${cfgPre.fontSize}px;--cv-reader-head-scale:${cfgPre.headScale};--cv-reader-head-gap:${cfgPre.headGap}px;--cv-reader-para-gap:${cfgPre.paraGap}em`;
     const stageOpen = `<div class="cv-reader-stage" data-pager-mode="${cfgPre.pagerMode}" data-indent="${cfgPre.indent ? '1' : '0'}" data-layout="${cfgPre.layout}" style="${stageStyle}"><div class="cv-reader-column">`;
     const stageClose = `</div></div>`;
     const overlayHtml = `
@@ -2061,10 +2069,21 @@ function renderReaderSettings(panel) {
                 </div>
             </div>
             <div class="cv-strip-box">
-                <div class="cv-strip-title">正文字号</div>
+                <div class="cv-strip-title">正文字号 / 段落 / 头部间距</div>
+                <div class="cv-field-hint">字号</div>
                 <div class="cv-reader-fontsize-row">
                     <input type="range" id="cv_r_fontsize" min="13" max="28" step="0.5" value="${cfg.readerFontSize || 15}"/>
                     <span class="cv-reader-fontsize-val" id="cv_r_fontsize_val">${cfg.readerFontSize || 15}px</span>
+                </div>
+                <div class="cv-field-hint">段落之间间距（行与行之间的呼吸）</div>
+                <div class="cv-reader-fontsize-row">
+                    <input type="range" id="cv_r_paragap" min="0.2" max="1.5" step="0.05" value="${(Number(cfg.readerParaGap) || 0.6).toFixed(2)}"/>
+                    <span class="cv-reader-fontsize-val" id="cv_r_paragap_val">${(Number(cfg.readerParaGap) || 0.6).toFixed(2)}em</span>
+                </div>
+                <div class="cv-field-hint">头部到正文间距（角色名下方留白）</div>
+                <div class="cv-reader-fontsize-row">
+                    <input type="range" id="cv_r_headgap" min="4" max="32" step="1" value="${Number(cfg.readerHeadGap) || 14}"/>
+                    <span class="cv-reader-fontsize-val" id="cv_r_headgap_val">${Number(cfg.readerHeadGap) || 14}px</span>
                 </div>
                 ${sw('cv_r_indent', !!cfg.readerIndent, '段落首行缩进 2 字')}
             </div>
@@ -2196,6 +2215,40 @@ function renderReaderSettings(panel) {
         };
         fsInput.oninput  = () => apply(false);
         fsInput.onchange = () => apply(true);
+    }
+    // 段落间距滑块（em）
+    const pgInput = document.getElementById('cv_r_paragap');
+    const pgVal   = document.getElementById('cv_r_paragap_val');
+    if (pgInput) {
+        const apply = (save) => {
+            const v = Math.max(0.2, Math.min(1.5, Number(pgInput.value) || 0.6));
+            if (pgVal) pgVal.textContent = v.toFixed(2) + 'em';
+            const stage = document.querySelector('.cv-reader-stage');
+            if (stage) stage.style.setProperty('--cv-reader-para-gap', v + 'em');
+            if (save) {
+                const c = loadSettings();
+                saveSettings({ ...c, readerParaGap: v });
+            }
+        };
+        pgInput.oninput  = () => apply(false);
+        pgInput.onchange = () => apply(true);
+    }
+    // 头部到正文间距滑块（px）
+    const hgInput = document.getElementById('cv_r_headgap');
+    const hgVal   = document.getElementById('cv_r_headgap_val');
+    if (hgInput) {
+        const apply = (save) => {
+            const v = Math.max(4, Math.min(32, Math.round(Number(hgInput.value) || 14)));
+            if (hgVal) hgVal.textContent = v + 'px';
+            const stage = document.querySelector('.cv-reader-stage');
+            if (stage) stage.style.setProperty('--cv-reader-head-gap', v + 'px');
+            if (save) {
+                const c = loadSettings();
+                saveSettings({ ...c, readerHeadGap: v });
+            }
+        };
+        hgInput.oninput  = () => apply(false);
+        hgInput.onchange = () => apply(true);
     }
     // 卡片头部缩放滑块
     const hsInput = document.getElementById('cv_r_headscale');
