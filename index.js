@@ -4,7 +4,7 @@
  * https://github.com/shanye5593/SillyTavern-ChatVault
  */
 
-const VERSION = '0.4.10-test';
+const VERSION = '0.4.11-test';
 const STORAGE_KEY = 'st-chatvault-meta';
 const SETTINGS_KEY = 'st-chatvault-settings';
 const PAGE_SIZE = 50;
@@ -310,11 +310,46 @@ async function deleteChat(avatar, fileName) {
 
 /* ---- 最后一条消息预览：懒加载 ---- */
 
-const previewCache = new Map(); // key = metaKey, value = string | null
+// value:
+//   string         → 正文首句
+//   ''             → 空聊天
+//   null           → 失败但仍在冷却期（10 分钟内不重试）
+// 内部表示：失败用 { __cvFail: ts } 对象记时间戳，到期后 has() 视为未命中
+const previewCache = new Map();
+const PREVIEW_CACHE_MAX = 500;        // 软上限，超出按插入序裁掉最早 10%
+const PREVIEW_FAIL_TTL  = 10 * 60_000; // 失败 10 分钟后允许重试
+
+function previewCacheGet(key) {
+    if (!previewCache.has(key)) return { hit: false };
+    const v = previewCache.get(key);
+    if (v && typeof v === 'object' && '__cvFail' in v) {
+        if (Date.now() - v.__cvFail < PREVIEW_FAIL_TTL) return { hit: true, value: null };
+        previewCache.delete(key); // 失败已过期，让调用方重新拉
+        return { hit: false };
+    }
+    return { hit: true, value: v };
+}
+function previewCacheSet(key, value) {
+    // 软上限：Map 迭代序 = 插入序，超出就裁掉最早一批，避免逐次 delete 抖动
+    if (previewCache.size >= PREVIEW_CACHE_MAX && !previewCache.has(key)) {
+        const drop = Math.ceil(PREVIEW_CACHE_MAX / 10);
+        const it = previewCache.keys();
+        for (let i = 0; i < drop; i++) {
+            const k = it.next().value;
+            if (k === undefined) break;
+            previewCache.delete(k);
+        }
+    }
+    previewCache.set(key, value);
+}
+function previewCacheMarkFail(key) {
+    previewCacheSet(key, { __cvFail: Date.now() });
+}
 
 async function fetchLastMessageText(character, fileName) {
     const key = metaKey(character.avatar, fileName);
-    if (previewCache.has(key)) return previewCache.get(key);
+    const cached = previewCacheGet(key);
+    if (cached.hit) return cached.value;
 
     // 尝试多种 body 形态以兼容不同 ST 版本（带 force:true 跳过缓存）
     const bodies = [
@@ -336,15 +371,15 @@ async function fetchLastMessageText(character, fileName) {
             for (let i = arr.length - 1; i >= 0; i--) {
                 const msg = arr[i];
                 if (msg && typeof msg.mes === 'string' && msg.mes.trim()) {
-                    previewCache.set(key, msg.mes);
+                    previewCacheSet(key, msg.mes);
                     return msg.mes;
                 }
             }
-            previewCache.set(key, '');
+            previewCacheSet(key, '');
             return '';
         } catch { /* try next body shape */ }
     }
-    previewCache.set(key, null); // 永久失败
+    previewCacheMarkFail(key); // 软失败：10 分钟后允许重试
     return null;
 }
 
@@ -1195,8 +1230,9 @@ function observePreviews() {
         const card = el.closest('.cv-card');
         if (!card) return;
         const key = metaKey(card.dataset.avatar, card.dataset.file);
-        if (previewCache.has(key)) {
-            const text = previewCache.get(key);
+        const cached = previewCacheGet(key);
+        if (cached.hit) {
+            const text = cached.value;
             if (text === null) {
                 el.classList.remove('is-loading'); el.classList.add('is-empty');
                 el.textContent = '（无法加载预览）';
@@ -2566,7 +2602,7 @@ function openEditModal(character, fileName) {
                 }
                 // 预览缓存也迁移
                 if (previewCache.has(oldKey)) {
-                    previewCache.set(newKey, previewCache.get(oldKey));
+                    previewCacheSet(newKey, previewCache.get(oldKey));
                     previewCache.delete(oldKey);
                 }
                 curFile = newFile;
