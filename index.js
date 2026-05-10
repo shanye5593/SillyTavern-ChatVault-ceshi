@@ -4,7 +4,7 @@
  * https://github.com/shanye5593/SillyTavern-ChatVault
  */
 
-const VERSION = '0.5.1-test';
+const VERSION = '0.4.1';
 const STORAGE_KEY = 'st-chatvault-meta';
 const SETTINGS_KEY = 'st-chatvault-settings';
 const PAGE_SIZE = 50;
@@ -67,8 +67,6 @@ const DEFAULT_SETTINGS = {
     windowHotkey: false,               // 是否启用全局快捷键开关面板
     windowHotkeyCombo: 'Alt+V',        // 快捷键组合
     windowState: null,                 // 记忆位置：{ x, y, scale }
-    // v0.5.0：显示模式互斥开关（'extract' = 摘取规则 / 'frontend' = 前端渲染）
-    displayMode: 'extract',
 };
 
 function loadSettings() {
@@ -123,108 +121,6 @@ function saveMeta(meta) {
         console.warn('[ChatVault] saveMeta failed:', e);
     }
 }
-
-/* ============================================================
- *  v0.5.0 前端渲染规则数据层
- *    存储独立 key：'st-chatvault-rules'
- *    形如 { _global: [rule, ...], '<avatar>': [rule, ...] }
- *    rule = { id, scriptName, findRegex, replaceString, disabled, depth }
- *    与酒馆正则系统完全解耦：导入时深拷贝，之后两边互不影响
- * ============================================================ */
-
-const RULES_KEY = 'st-chatvault-rules';
-const FRONTEND_MAX_LEN = 500000; // 单条消息超 500KB 跳过，防止灾难性回溯卡死浏览器
-
-function loadRules() {
-    try {
-        const v = JSON.parse(localStorage.getItem(RULES_KEY) || '{"_global":[]}');
-        if (!v || typeof v !== 'object' || Array.isArray(v)) return { _global: [] };
-        if (!Array.isArray(v._global)) v._global = [];
-        return v;
-    } catch { return { _global: [] }; }
-}
-function saveRules(rules) {
-    try { localStorage.setItem(RULES_KEY, JSON.stringify(rules)); }
-    catch (e) { console.warn('[ChatVault] saveRules failed:', e); }
-}
-function getActiveRulesFor(avatar) {
-    const all = loadRules();
-    const g = (all._global || []).filter(r => r && !r.disabled);
-    const c = (avatar && Array.isArray(all[avatar])) ? all[avatar].filter(r => r && !r.disabled) : [];
-    return [...g, ...c];
-}
-function normalizeRule(raw) {
-    if (!raw || typeof raw !== 'object') return null;
-    const find = String(raw.findRegex || '');
-    if (!find) return null;
-    let id = raw.id;
-    if (typeof id !== 'string' || !id) {
-        try { id = (crypto.randomUUID && crypto.randomUUID()) || ('r_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8)); }
-        catch { id = 'r_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8); }
-    }
-    return {
-        id,
-        scriptName: String(raw.scriptName || '未命名规则'),
-        findRegex: find,
-        replaceString: String(raw.replaceString || ''),
-        disabled: !!raw.disabled,
-        depth: (typeof raw.depth === 'number' && raw.depth > 0) ? raw.depth : null,
-    };
-}
-function parseRulesJson(text) {
-    let data;
-    try { data = JSON.parse(text); } catch { return []; }
-    let arr = [];
-    if (Array.isArray(data)) arr = data;
-    else if (data && Array.isArray(data.regex_scripts)) arr = data.regex_scripts;
-    else if (data && typeof data === 'object' && data.findRegex) arr = [data];
-    return arr.map(normalizeRule).filter(Boolean);
-}
-function compileRegex(src) {
-    try {
-        const m = String(src).match(/^\/([\s\S]+)\/([gimsuy]*)$/);
-        let pat, flags;
-        if (m) { pat = m[1]; flags = m[2]; }
-        else { pat = String(src); flags = ''; }
-        return new RegExp(pat, flags);
-    } catch { return null; }
-}
-function applyFrontendRules(rawText, rules, ctx) {
-    if (!rules || !rules.length) return null;
-    if (typeof rawText !== 'string' || !rawText) return null;
-    if (rawText.length > FRONTEND_MAX_LEN) return null;
-    let out = rawText;
-    let touched = false;
-    for (const r of rules) {
-        // depth 字段：若设置且 >0，仅作用于"距末尾 < depth 的消息"
-        if (typeof r.depth === 'number' && r.depth > 0 && ctx.fromEnd != null && ctx.fromEnd >= r.depth) continue;
-        const re = compileRegex(r.findRegex);
-        if (!re) continue;
-        const repl = String(r.replaceString || '')
-            .replace(/\{\{user\}\}/g, ctx.user || '')
-            .replace(/\{\{char\}\}/g, ctx.char || '');
-        try {
-            const before = out;
-            out = out.replace(re, repl);
-            if (out !== before) touched = true;
-        } catch (e) {
-            console.warn('[ChatVault] rule failed:', r.scriptName, e);
-        }
-    }
-    return touched ? out : null;
-}
-// 把 Shadow DOM 里 innerHTML 注入的 <script> 重新创建一遍，让它真正执行
-// （innerHTML 设置的 script 不会自动运行）
-function activateScripts(root) {
-    if (!root) return;
-    root.querySelectorAll('script').forEach(oldS => {
-        const ns = document.createElement('script');
-        for (const a of oldS.attributes) ns.setAttribute(a.name, a.value);
-        ns.textContent = oldS.textContent;
-        oldS.parentNode.replaceChild(ns, oldS);
-    });
-}
-
 function metaKey(avatar, fileName) {
     return `${avatar}::${fileName}`;
 }
@@ -936,9 +832,6 @@ function render() {
                 <img class="cv-group-avatar" src="${avatarUrl}" onerror="this.style.visibility='hidden'" alt="" />
                 <span class="cv-group-name">${escapeHtml(curChar.name || '(无名)')}</span>
                 <span class="cv-group-count">共 ${(chatsByAvatar[curChar.avatar] || []).length} 条聊天</span>
-                <button class="cv-group-rules" id="cv_current_rules" title="前端渲染规则管理">
-                    ${ICONS.gear}<span>规则</span>
-                </button>
                 <button class="cv-group-newchat" id="cv_current_import" title="从 jsonl 文件导入到当前角色">
                     ${ICONS.upload}<span>导入</span>
                 </button>
@@ -972,13 +865,6 @@ function render() {
                 ev.stopPropagation();
                 if (!confirm(`为「${curChar.name || '角色'}」新建一个聊天？\n\n会切换到该角色并开始全新对话。`)) return;
                 newChatFor(curChar);
-            };
-        }
-        const ruleBtnCur = document.getElementById('cv_current_rules');
-        if (ruleBtnCur) {
-            ruleBtnCur.onclick = (ev) => {
-                ev.stopPropagation();
-                openRulesManager(curChar.avatar, curChar.name);
             };
         }
         const impBtn = document.getElementById('cv_current_import');
@@ -1024,9 +910,6 @@ function renderCharactersTab(body) {
                     <img class="cv-group-avatar" src="${avatarUrl}" onerror="this.style.visibility='hidden'" alt="" />
                     <span class="cv-group-name">${highlight(c.name || '(无名)', searchQuery)}</span>
                     ${right}
-                    <button class="cv-group-rules" title="前端渲染规则管理">
-                        ${ICONS.gear}<span>规则</span>
-                    </button>
                     <button class="cv-group-newchat" title="为该角色新建聊天">
                         ${ICONS.plus}<span>新建聊天</span>
                     </button>
@@ -1051,16 +934,6 @@ function renderCharactersTab(body) {
                 if (!character) return;
                 if (!confirm(`为「${character.name || '角色'}」新建一个聊天？\n\n会切换到该角色并开始全新对话。`)) return;
                 newChatFor(character);
-            };
-        }
-        // 前端规则齿轮：同样阻断折叠
-        const ruleBtnGrp = header.querySelector('.cv-group-rules');
-        if (ruleBtnGrp) {
-            ruleBtnGrp.onclick = (ev) => {
-                ev.stopPropagation();
-                const character = (charactersCache || []).find(c => c.avatar === avatar);
-                if (!character) return;
-                openRulesManager(character.avatar, character.name);
             };
         }
         header.onclick = () => {
@@ -1450,7 +1323,6 @@ function readerCfg() {
         fontSize: (Number.isFinite(fs) && fs >= 12 && fs <= 28) ? fs : 15,
         headScale: (Number.isFinite(hs) && hs >= 0.8 && hs <= 1.8) ? hs : 1.0,
         indent: !!cfg.readerIndent,
-        displayMode: cfg.displayMode === 'frontend' ? 'frontend' : 'extract',
     };
 }
 
@@ -1502,34 +1374,20 @@ function renderReader() {
         ? `/thumbnail?type=persona&file=${encodeURIComponent(boundUserAvatarFile)}`
         : '';
 
-    // 处理 + 缓存（依赖 strip/extract/userRules + displayMode + 规则签名）
-    const useFrontend = cfg.displayMode === 'frontend';
-    const feRules = useFrontend ? getActiveRulesFor(character.avatar) : [];
-    const ruleSig = useFrontend
-        ? feRules.map(r => `${r.id}:${(r.findRegex||'').length}:${(r.replaceString||'').length}:${r.disabled?1:0}:${r.depth||0}`).join('|')
-        : '';
-    const cfgSig = JSON.stringify({ s: cfg.strip, e: cfg.extract, u: cfg.userRules, m: cfg.displayMode, r: ruleSig });
+    // 处理 + 缓存（依赖 strip/extract/userRules 配置，不含 style）
+    const cfgSig = JSON.stringify({ s: cfg.strip, e: cfg.extract, u: cfg.userRules });
     if (readerState._cfgSig !== cfgSig || !readerState._processed) {
         readerState._cfgSig = cfgSig;
         readerState._processed = messages.map((m, idx) => {
             const isUser = !!m?.is_user;
-            let text = '', html = null;
-            if (useFrontend) {
-                // 前端渲染模式：跳过摘取，原文交给规则替换
-                const raw = (m && typeof m.mes === 'string') ? m.mes : '';
-                const fromEnd = messages.length - 1 - idx;
-                const rendered = applyFrontendRules(raw, feRules, { user: userName, char: charName, fromEnd });
-                if (rendered !== null) { html = rendered; text = raw; }
-                else { text = raw; } // 规则没匹配上，按纯文本走 Markdown 通道
-            } else {
-                const useUser = cfg.userRules.enabled && isUser;
-                const s = useUser ? cfg.userRules.strip : cfg.strip;
-                const e = useUser ? cfg.userRules.extract : cfg.extract;
-                text = (m && typeof m.mes === 'string') ? processMessageText(m.mes, s, e) : '';
-            }
+            const useUser = cfg.userRules.enabled && isUser;
+            const s = useUser ? cfg.userRules.strip : cfg.strip;
+            const e = useUser ? cfg.userRules.extract : cfg.extract;
+            const text = (m && typeof m.mes === 'string') ? processMessageText(m.mes, s, e) : '';
+            // user 名字优先用消息自身记录的 m.name（兼容多 persona 聊天），否则用文件级 userName
             const rawName = m?.name && m.name !== 'unused' ? m.name : '';
             const who = isUser ? (rawName || userName) : (rawName || charName);
-            return { idx, who, is_user: isUser, text, html };
+            return { idx, who, is_user: isUser, text };
         });
     }
     const processed = readerState._processed;
@@ -1553,15 +1411,13 @@ function renderReader() {
 
     const cardHtml = slice.map(m => {
         const who = escapeHtml(m.who);
-        // 前端渲染：发占位，后面 attachShadow + innerHTML
-        // 普通模式：原 Markdown 段落渲染
-        const text = m.html != null
-            ? `<div class="cv-reader-msg-body-fe" data-fe-idx="${m.idx}"></div>`
-            : (m.text
-                ? m.text.split(/\n+/).map(s => s.trim()).filter(Boolean)
-                    .map(seg => `<p class="cv-msg-p">${mdInline(escapeHtml(seg))}</p>`).join('')
-                  || '<span class="cv-reader-empty">（空）</span>'
-                : '<span class="cv-reader-empty">（空）</span>');
+        // 把消息按段落（连续换行视作分段）拆成 <p>，单换行保留为 <br>，便于首行缩进
+        // 每个非空"行"包成一段，让首行缩进对每段生效（包含连续换行产生的空行也被丢弃）
+        const text = m.text
+            ? m.text.split(/\n+/).map(s => s.trim()).filter(Boolean)
+                .map(seg => `<p class="cv-msg-p">${mdInline(escapeHtml(seg))}</p>`).join('')
+              || '<span class="cv-reader-empty">（空）</span>'
+            : '<span class="cv-reader-empty">（空）</span>';
         // user 头像：若聊天 meta 里绑定了 persona 文件名，走 /thumbnail（零附加存储）；否则首字徽章
         const userAvHtml = boundUserAvatarUrl
             ? `<img class="cv-reader-msg-avatar" src="${boundUserAvatarUrl}" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-flex'" alt=""/><div class="cv-reader-msg-avatar cv-reader-user-avatar" style="display:none">${escapeHtml((m.who||'你').slice(0,1))}</div>`
@@ -1593,17 +1449,6 @@ function renderReader() {
         + (pagerHtml ? `<div class="cv-reader-pager-wrap" data-pager-mode="${cfgPre.pagerMode}">${pagerHtml}</div>` : '');
     bindReaderHeader();
     bindReaderPager(totalPages);
-    // 前端渲染：把 m.html 挂到 Shadow DOM（隔离 CSS，激活脚本）
-    slice.forEach(m => {
-        if (m.html == null) return;
-        const host = body.querySelector(`.cv-reader-msg-body-fe[data-fe-idx="${m.idx}"]`);
-        if (!host || host.shadowRoot) return;
-        try {
-            const sd = host.attachShadow({ mode: 'open' });
-            sd.innerHTML = m.html;
-            activateScripts(sd);
-        } catch (e) { console.warn('[ChatVault] shadow mount failed', e); }
-    });
     if (readerState.settingsOpen) {
         const panel = document.getElementById('cv_reader_settings');
         if (panel) { panel.hidden = false; renderReaderSettings(panel); }
@@ -2860,180 +2705,6 @@ function applyCustomColors() {
     style.textContent = rules.length ? `#chatvault_panel { ${rules.join(' ')} }` : '';
 }
 
-
-/* ============================================================
- *  v0.5.0 前端渲染规则管理 modal
- * ============================================================ */
-
-function openRulesManager(avatar, characterName) {
-    // 先确保该角色 key 存在（即便空数组也建好，方便后续 push）
-    {
-        const all = loadRules();
-        if (avatar && !Array.isArray(all[avatar])) { all[avatar] = []; saveRules(all); }
-    }
-    const old = document.getElementById('cv_modal');
-    if (old) old.remove();
-    const wrap = document.createElement('div');
-    wrap.className = 'cv-modal-backdrop';
-    wrap.id = 'cv_modal';
-    wrap.onclick = () => wrap.remove();
-
-    const escName = escapeHtml(characterName || '当前角色');
-    wrap.innerHTML = `
-        <div class="cv-modal cv-modal-wide cv-rules-modal" onclick="event.stopPropagation()">
-            <button class="cv-modal-close" id="cv_rm_close" type="button" title="关闭">${ICONS.close}</button>
-            <div class="cv-modal-title">前端渲染规则 · ${escName}</div>
-            <div class="cv-modal-body">
-                <div class="cv-rules-actions">
-                    <button class="menu_button cv-inline-btn" id="cv_rm_import">${ICONS.upload}<span>导入 JSON 文件</span></button>
-                    <button class="menu_button cv-inline-btn" id="cv_rm_export">${ICONS.download}<span>导出当前角色</span></button>
-                    <span class="cv-rules-hint">仅支持文件导入（不支持粘贴，避免大文本卡死）。从酒馆「正则脚本」导出 .json 直接拖进来。</span>
-                </div>
-                <div class="cv-rules-section">
-                    <div class="cv-rules-section-head">角色规则（${escName}）</div>
-                    <div id="cv_rm_char_list" class="cv-rules-list"></div>
-                </div>
-                <div class="cv-rules-section">
-                    <div class="cv-rules-section-head">全局规则（所有角色生效）</div>
-                    <div id="cv_rm_global_list" class="cv-rules-list"></div>
-                </div>
-            </div>
-            <div class="cv-modal-actions">
-                <button class="menu_button" id="cv_rm_done">完成</button>
-            </div>
-        </div>
-    `;
-    (document.getElementById('chatvault_panel') || document.body).appendChild(wrap);
-
-    function renderList() {
-        const all = loadRules();
-        const charRules = avatar ? (all[avatar] || []) : [];
-        const globalRules = all._global || [];
-        const itemHtml = (r, scope) => {
-            const find = r.findRegex || '';
-            const findShort = find.length > 90 ? find.slice(0, 90) + '…' : find;
-            const moveBtn = (scope === 'char' && avatar)
-                ? `<button class="cv-rule-btn" data-act="toGlobal" title="移到全局">→ 全局</button>`
-                : (scope === 'global' && avatar
-                    ? `<button class="cv-rule-btn" data-act="toChar" title="移到当前角色">→ 角色</button>`
-                    : '');
-            return `
-                <div class="cv-rule-row" data-id="${escapeHtml(r.id)}" data-scope="${scope}">
-                    <label class="cv-rule-toggle">
-                        <input type="checkbox" data-act="toggle" ${r.disabled ? '' : 'checked'}>
-                        <span class="cv-rule-name" title="${escapeHtml(r.scriptName)}">${escapeHtml(r.scriptName)}</span>
-                    </label>
-                    <code class="cv-rule-find" title="${escapeHtml(find)}">${escapeHtml(findShort)}</code>
-                    <div class="cv-rule-actions">
-                        ${moveBtn}
-                        <button class="cv-rule-btn cv-rule-del" data-act="delete" title="删除">${ICONS.trash}</button>
-                    </div>
-                </div>
-            `;
-        };
-        const charListEl = document.getElementById('cv_rm_char_list');
-        const gListEl = document.getElementById('cv_rm_global_list');
-        if (charListEl) charListEl.innerHTML = charRules.length
-            ? charRules.map(r => itemHtml(r, 'char')).join('')
-            : `<div class="cv-rules-empty">${avatar ? '没有角色规则。导入或从全局移过来。' : '需要从角色头部进入才能管理角色规则。'}</div>`;
-        if (gListEl) gListEl.innerHTML = globalRules.length
-            ? globalRules.map(r => itemHtml(r, 'global')).join('')
-            : `<div class="cv-rules-empty">没有全局规则。</div>`;
-    }
-    renderList();
-
-    // 事件委托：toggle / delete / 移动
-    wrap.addEventListener('click', (ev) => {
-        const row = ev.target.closest('.cv-rule-row');
-        if (!row) return;
-        const id = row.dataset.id;
-        const scope = row.dataset.scope;
-        const actEl = ev.target.closest('[data-act]');
-        if (!id || !actEl) return;
-        const act = actEl.dataset.act;
-        const all = loadRules();
-        const fromKey = scope === 'char' ? avatar : '_global';
-        const fromList = (all[fromKey] || []);
-        const idx = fromList.findIndex(r => r.id === id);
-        if (idx < 0) return;
-        if (act === 'toggle') {
-            fromList[idx].disabled = !ev.target.checked;
-        } else if (act === 'delete') {
-            if (!confirm(`删除规则「${fromList[idx].scriptName}」？`)) return;
-            fromList.splice(idx, 1);
-        } else if (act === 'toGlobal' && scope === 'char') {
-            const [r] = fromList.splice(idx, 1);
-            all._global = all._global || [];
-            all._global.push(r);
-        } else if (act === 'toChar' && scope === 'global' && avatar) {
-            const [r] = fromList.splice(idx, 1);
-            all[avatar] = all[avatar] || [];
-            all[avatar].push(r);
-        } else {
-            return;
-        }
-        all[fromKey] = fromList;
-        saveRules(all);
-        // 让阅读模式下次进就重算
-        if (typeof readerState !== 'undefined') { readerState._cfgSig = null; readerState._processed = null; }
-        renderList();
-    });
-
-    document.getElementById('cv_rm_close').onclick = () => wrap.remove();
-    document.getElementById('cv_rm_done').onclick  = () => wrap.remove();
-
-    document.getElementById('cv_rm_import').onclick = () => {
-        const inp = document.createElement('input');
-        inp.type = 'file';
-        inp.accept = '.json,application/json';
-        inp.onchange = async () => {
-            const f = inp.files?.[0];
-            if (!f) return;
-            try {
-                const text = await f.text();
-                const parsed = parseRulesJson(text);
-                if (!parsed.length) {
-                    alert('未识别到任何有效规则。请确认文件是 ST 正则脚本导出的 JSON。');
-                    return;
-                }
-                let target;
-                if (avatar) {
-                    target = confirm(`识别到 ${parsed.length} 条规则。\n\n点「确定」加到「${characterName || '当前角色'}」\n点「取消」加到「全局」`) ? 'char' : 'global';
-                } else {
-                    target = 'global';
-                }
-                const all = loadRules();
-                if (target === 'char') {
-                    all[avatar] = all[avatar] || [];
-                    all[avatar].push(...parsed);
-                } else {
-                    all._global = all._global || [];
-                    all._global.push(...parsed);
-                }
-                saveRules(all);
-                if (typeof readerState !== 'undefined') { readerState._cfgSig = null; readerState._processed = null; }
-                renderList();
-            } catch (e) {
-                alert('导入失败：' + (e.message || e));
-            }
-        };
-        inp.click();
-    };
-
-    document.getElementById('cv_rm_export').onclick = () => {
-        const all = loadRules();
-        const list = avatar ? (all[avatar] || []) : (all._global || []);
-        if (!list.length) { alert('没有可导出的规则。'); return; }
-        const blob = new Blob([JSON.stringify(list, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `chatvault-rules-${(characterName || avatar || 'global').replace(/[^\w\u4e00-\u9fa5\-]/g, '_')}.json`;
-        document.body.appendChild(a); a.click(); a.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 1500);
-    };
-}
-
 /* ============================================================
  *  扩展设置面板（嵌入 ST「扩展」页）
  * ============================================================ */
@@ -3059,14 +2730,6 @@ function injectSettings() {
               <input type="checkbox" id="cv_set_enabled" ${s.enabled ? 'checked' : ''}>
               <span>启用入口按钮（在扩展菜单里显示「聊天档案」）</span>
             </label>
-          </div>
-          <div class="cv-settings-row cv-display-mode-row">
-            <span class="cv-display-mode-label">阅读模式 · 显示方式</span>
-            <div class="cv-display-mode-toggle" id="cv_set_displaymode">
-              <button type="button" data-mode="extract" class="${s.displayMode !== 'frontend' ? 'is-on' : ''}">摘取规则</button>
-              <button type="button" data-mode="frontend" class="${s.displayMode === 'frontend' ? 'is-on' : ''}">前端渲染</button>
-            </div>
-            <span class="cv-display-mode-hint">⚠️ 前端渲染会执行规则作者写的 HTML/CSS/JS，仅启用受信任的规则。规则按角色卡管理（点角色头部的⚙️）。</span>
           </div>
           <div class="cv-settings-row">
             <label for="cv_set_theme">配色方案：</label>
@@ -3164,25 +2827,6 @@ function injectSettings() {
         // 显隐自定义配色面板
         const cdw = wrap.querySelector('#cv_color_drawer_wrap');
         if (cdw) cdw.style.display = (newTheme === 'custom') ? 'block' : 'none';
-    });
-    // 显示模式互斥切换（v0.5.0）
-    const dmWrap = wrap.querySelector('#cv_set_displaymode');
-    if (dmWrap) dmWrap.addEventListener('click', (e) => {
-        const btn = e.target.closest('button[data-mode]');
-        if (!btn) return;
-        const mode = btn.dataset.mode === 'frontend' ? 'frontend' : 'extract';
-        const cur = loadSettings();
-        if (cur.displayMode === mode) return;
-        saveSettings({ ...cur, displayMode: mode });
-        dmWrap.querySelectorAll('button[data-mode]').forEach(b => {
-            b.classList.toggle('is-on', b.dataset.mode === mode);
-        });
-        // 立刻让阅读模式重算（清缓存）；若正处于阅读视图就直接重渲染
-        if (typeof readerState !== 'undefined') {
-            readerState._cfgSig = null;
-            readerState._processed = null;
-            if (readerState.active) renderReader();
-        }
     });
 
     // ----- 多字体管理 -----
