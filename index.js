@@ -4,7 +4,7 @@
  * https://github.com/shanye5593/SillyTavern-ChatVault
  */
 
-const VERSION = '0.3.37-test';
+const VERSION = '0.3.38-test';
 const STORAGE_KEY = 'st-chatvault-meta';
 const SETTINGS_KEY = 'st-chatvault-settings';
 const PAGE_SIZE = 50;
@@ -105,13 +105,21 @@ function currentThemeClass() {
 
 function loadMeta() {
     try {
-        return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+        const v = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+        // 防御：localStorage 可能被外部脚本/插件冲突写入非对象，避免后续 m[k]=... 直接崩
+        if (!v || typeof v !== 'object' || Array.isArray(v)) return {};
+        return v;
     } catch {
         return {};
     }
 }
 function saveMeta(meta) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(meta));
+    try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(meta));
+    } catch (e) {
+        // quota exceeded / 隐私模式 / 磁盘满：仅警告，不让整个交互崩
+        console.warn('[ChatVault] saveMeta failed:', e);
+    }
 }
 function metaKey(avatar, fileName) {
     return `${avatar}::${fileName}`;
@@ -593,8 +601,19 @@ function escHandler(e) {
 
 function closePanel() {
     if (previewObserver) { previewObserver.disconnect(); previewObserver = null; }
+    // 移除 PC 端 window resize 监听，避免反复开关导致监听器堆积
+    if (panelEl && panelEl._cvOnResize) {
+        window.removeEventListener('resize', panelEl._cvOnResize);
+        panelEl._cvOnResize = null;
+    }
     if (panelEl) { panelEl.remove(); panelEl = null; }
     document.removeEventListener('keydown', escHandler);
+    // 重置阅读模式状态——否则下次打开 render() 会因为 readerState.active=true 直接进入旧阅读视图
+    readerState.active = false;
+    readerState.arr = null;
+    readerState._processed = null;
+    readerState._cfgSig = null;
+    readerState.settingsOpen = false;
     // 关闭面板时清空搜索词，避免下次打开时旧搜索仍然生效但输入框为空
     searchQuery = '';
     currentPage = 1;
@@ -637,14 +656,17 @@ async function loadAll() {
 
         async function worker() {
             while (queue.length) {
+                if (loadToken !== loadAllToken) return;   // 早退：被新一轮 loadAll 抢占
                 const c = queue.shift();
                 try {
                     const list = await fetchChatsFor(c.avatar);
+                    if (loadToken !== loadAllToken) return;   // fetch 完成时再核一次，避免污染新对象
                     chatsByAvatar[c.avatar] = (Array.isArray(list) ? list : []).map(ch => ({
                         ...ch,
                         file_name: stripExt(ch.file_name),
                     }));
                 } catch (e) {
+                    if (loadToken !== loadAllToken) return;
                     chatsByAvatar[c.avatar] = [];
                     errorsByAvatar[c.avatar] = e.message || String(e);
                     console.warn('[ChatVault] 角色聊天加载失败:', c.name, e);
@@ -1235,8 +1257,10 @@ const readerState = {
     settingsOpen: false,
 };
 
+let _readerToken = 0;
 async function enterReader(character, fileName) {
     if (!character || !fileName) return;
+    const myToken = ++_readerToken;
     // 进入阅读模式前记录列表滚动位置，退出后恢复，避免回滚到顶
     const bodyEl = document.getElementById('cv_body');
     readerState.bodyScrollBefore = bodyEl ? bodyEl.scrollTop : 0;
@@ -1252,11 +1276,16 @@ async function enterReader(character, fileName) {
     const panel = document.getElementById('chatvault_panel');
     if (panel) panel.classList.add('cv-in-reader');
     renderReader();
+    let arr;
     try {
-        readerState.arr = await fetchFullChat(character, fileName);
+        arr = await fetchFullChat(character, fileName);
     } catch (e) {
-        readerState.arr = { error: e.message || String(e) };
+        arr = { error: e.message || String(e) };
     }
+    // 防竞态：旧请求晚返回时，token 已被新一次 enterReader 抢占，丢弃
+    if (myToken !== _readerToken) return;
+    if (!readerState.active) return;
+    readerState.arr = arr;
     renderReader();
 }
 
@@ -2517,6 +2546,8 @@ function initWindowChrome(overlay, panel) {
         applyTransform(panel, getCurrentState(panel));
     };
     window.addEventListener('resize', onWinResize);
+    // 把引用挂到 panel 上，closePanel 时拆除，避免反复开关后监听器堆积
+    panel._cvOnResize = onWinResize;
 }
 
 function resetWindow() {
