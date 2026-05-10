@@ -4,7 +4,7 @@
  * https://github.com/shanye5593/SillyTavern-ChatVault
  */
 
-const VERSION = '0.4.1';
+const VERSION = '0.4.2-test';
 const STORAGE_KEY = 'st-chatvault-meta';
 const SETTINGS_KEY = 'st-chatvault-settings';
 const PAGE_SIZE = 50;
@@ -57,6 +57,8 @@ const DEFAULT_SETTINGS = {
     readerFontSize: 15,
     // 阅读模式段落首行缩进
     readerIndent: false,
+    // v0.4.2 阅读模式头部排版： 'default' | 'center' | 'dialog'
+    readerLayout: 'default',
     // 自定义字体（v0.3.31 起改成多字体优先级数组：[{family, url}, ...]）
     customFonts: [],
     // 自定义配色（v0.3.32 起；只覆盖填了的字段，其它跟随主题）
@@ -135,7 +137,8 @@ function patchMetaFor(avatar, fileName, patch) {
     if (m[k].customTitle === '') delete m[k].customTitle;
     if (Array.isArray(m[k].tags) && m[k].tags.length === 0) delete m[k].tags;
     if (m[k].userAvatar === '') delete m[k].userAvatar;
-    if (!m[k].starred && !m[k].customTitle && !m[k].tags && !m[k].userAvatar) {
+    if (Array.isArray(m[k].bookmarks) && m[k].bookmarks.length === 0) delete m[k].bookmarks;
+    if (!m[k].starred && !m[k].customTitle && !m[k].tags && !m[k].userAvatar && !m[k].bookmarks) {
         delete m[k];
     }
     saveMeta(m);
@@ -144,6 +147,49 @@ function patchMetaFor(avatar, fileName, patch) {
 function toggleStar(avatar, fileName) {
     const cur = getMetaFor(avatar, fileName);
     return patchMetaFor(avatar, fileName, { starred: !cur.starred }).starred || false;
+}
+
+/* —— v0.4.2 书签：每聊天独立，最多 50 条；指纹防错位 —— */
+const BOOKMARK_LIMIT = 50;
+function getBookmarks(avatar, fileName) {
+    const m = getMetaFor(avatar, fileName);
+    return Array.isArray(m.bookmarks) ? m.bookmarks.slice() : [];
+}
+function setBookmarks(avatar, fileName, list) {
+    const m = loadMeta();
+    const k = metaKey(avatar, fileName);
+    m[k] = m[k] || {};
+    if (Array.isArray(list) && list.length) m[k].bookmarks = list;
+    else delete m[k].bookmarks;
+    if (!m[k].starred && !m[k].customTitle && !m[k].tags && !m[k].userAvatar && !m[k].bookmarks) delete m[k];
+    saveMeta(m);
+}
+function bmFingerprint(text) {
+    return String(text || '').replace(/\s+/g, '').slice(0, 30);
+}
+function bmSnippet(rawMes) {
+    const t = String(rawMes || '').replace(/\s+/g, ' ').trim();
+    return t.slice(0, 30);
+}
+function findBookmark(avatar, fileName, idx) {
+    return getBookmarks(avatar, fileName).find(b => b.idx === idx) || null;
+}
+function upsertBookmark(avatar, fileName, idx, snippet, note) {
+    const list = getBookmarks(avatar, fileName);
+    const exist = list.findIndex(b => b.idx === idx);
+    if (exist < 0 && list.length >= BOOKMARK_LIMIT) {
+        try { toastr.warning(`书签上限 ${BOOKMARK_LIMIT} 条，请先删几个`); } catch {}
+        return false;
+    }
+    const item = { idx, snippet: snippet || '', note: note || '', createdAt: Date.now() };
+    if (exist >= 0) list[exist] = { ...list[exist], snippet: item.snippet, note: item.note };
+    else list.push(item);
+    list.sort((a, b) => a.idx - b.idx);
+    setBookmarks(avatar, fileName, list);
+    return true;
+}
+function removeBookmark(avatar, fileName, idx) {
+    setBookmarks(avatar, fileName, getBookmarks(avatar, fileName).filter(b => b.idx !== idx));
 }
 
 /* ============================================================
@@ -1323,6 +1369,7 @@ function readerCfg() {
         fontSize: (Number.isFinite(fs) && fs >= 12 && fs <= 28) ? fs : 15,
         headScale: (Number.isFinite(hs) && hs >= 0.8 && hs <= 1.8) ? hs : 1.0,
         indent: !!cfg.readerIndent,
+        layout: ['default','center','dialog'].includes(cfg.readerLayout) ? cfg.readerLayout : 'default',
     };
 }
 
@@ -1338,7 +1385,7 @@ function renderReader() {
     // 悬浮覆层（按钮 + 设置面板 + 分页器都从 stage 移出，作为 cv_body 的直接子节点）
     // 这样它们才真正"悬浮"——不会随 stage 滚动消失
     const stageStyle = `--cv-reader-font-size:${cfgPre.fontSize}px;--cv-reader-head-scale:${cfgPre.headScale}`;
-    const stageOpen = `<div class="cv-reader-stage" data-pager-mode="${cfgPre.pagerMode}" data-indent="${cfgPre.indent ? '1' : '0'}" style="${stageStyle}"><div class="cv-reader-column">`;
+    const stageOpen = `<div class="cv-reader-stage" data-pager-mode="${cfgPre.pagerMode}" data-indent="${cfgPre.indent ? '1' : '0'}" data-layout="${cfgPre.layout}" style="${stageStyle}"><div class="cv-reader-column">`;
     const stageClose = `</div></div>`;
     const overlayHtml = `
         <button class="cv-reader-fab cv-reader-fab-back" id="cv_reader_back" type="button" title="返回列表">${ICONS.arrowL}</button>
@@ -1427,8 +1474,10 @@ function renderReader() {
             : (avatarUrl
                 ? `<img class="cv-reader-msg-avatar" src="${avatarUrl}" onerror="this.style.visibility='hidden'" alt=""/>`
                 : `<div class="cv-reader-msg-avatar">${escapeHtml((m.who||'C').slice(0,1))}</div>`);
+        const _bmHit = (readerState.character && readerState.fileName)
+            ? !!findBookmark(readerState.character.avatar, readerState.fileName, m.idx) : false;
         return `
-            <div class="cv-reader-msg ${m.is_user ? 'is-user' : 'is-char'}">
+            <div class="cv-reader-msg ${m.is_user ? 'is-user' : 'is-char'}${_bmHit ? ' has-bookmark' : ''}" data-mes-idx="${m.idx}">
                 <div class="cv-reader-msg-head">
                     ${avHtml}
                     <span class="cv-reader-msg-who">${who}</span>
@@ -1449,6 +1498,7 @@ function renderReader() {
         + (pagerHtml ? `<div class="cv-reader-pager-wrap" data-pager-mode="${cfgPre.pagerMode}">${pagerHtml}</div>` : '');
     bindReaderHeader();
     bindReaderPager(totalPages);
+    bindReaderMsgMenu();
     if (readerState.settingsOpen) {
         const panel = document.getElementById('cv_reader_settings');
         if (panel) { panel.hidden = false; renderReaderSettings(panel); }
@@ -1549,6 +1599,190 @@ function bindReaderPager(totalPages) {
     const goBtn = document.getElementById('cv_pager_go');
     if (goBtn) goBtn.onclick = () => goTo(inp?.value);
     if (inp) inp.onkeydown = (e) => { if (e.key === 'Enter') goTo(inp.value); };
+}
+
+/* —— v0.4.2 书签：右键 / 长按消息呼出菜单 —— */
+function bindReaderMsgMenu() {
+    const list = document.querySelector('.cv-reader-list');
+    if (!list) return;
+    list.oncontextmenu = (e) => {
+        const msg = e.target.closest('.cv-reader-msg');
+        if (!msg) return;
+        e.preventDefault();
+        openMsgMenu(msg, e.clientX, e.clientY);
+    };
+    list.querySelectorAll('.cv-reader-msg').forEach(msg => {
+        let timer = null, sx = 0, sy = 0, fired = false;
+        const cancel = () => { if (timer) { clearTimeout(timer); timer = null; } };
+        msg.addEventListener('touchstart', (e) => {
+            if (e.touches.length !== 1) { cancel(); return; }
+            const t = e.touches[0]; sx = t.clientX; sy = t.clientY; fired = false;
+            cancel();
+            timer = setTimeout(() => {
+                timer = null; fired = true;
+                try { navigator.vibrate && navigator.vibrate(20); } catch {}
+                openMsgMenu(msg, t.clientX, t.clientY);
+            }, 480);
+        }, { passive: true });
+        msg.addEventListener('touchmove', (e) => {
+            const t = e.touches[0];
+            if (!t) return;
+            if (Math.abs(t.clientX - sx) > 8 || Math.abs(t.clientY - sy) > 8) cancel();
+        }, { passive: true });
+        msg.addEventListener('touchend', (e) => {
+            cancel();
+            if (fired) { e.preventDefault && e.preventDefault(); }
+        });
+        msg.addEventListener('touchcancel', cancel);
+    });
+}
+
+function closeMsgMenu() {
+    const m = document.getElementById('cv_msg_menu');
+    if (m) m.remove();
+}
+
+function openMsgMenu(msgEl, x, y) {
+    closeMsgMenu();
+    const idx = Number(msgEl.dataset.mesIdx);
+    const { character, fileName } = readerState;
+    if (!character || !fileName || !Number.isFinite(idx)) return;
+    const exist = findBookmark(character.avatar, fileName, idx);
+    const menu = document.createElement('div');
+    menu.className = 'cv-msg-menu';
+    menu.id = 'cv_msg_menu';
+    menu.innerHTML = exist
+        ? `<button data-act="edit" type="button">✏️ 编辑书签</button><button data-act="del" type="button">🗑 删除书签</button>`
+        : `<button data-act="add" type="button">📖 添加书签到 #${idx}</button>`;
+    document.body.appendChild(menu);
+    const rect = menu.getBoundingClientRect();
+    const vw = window.innerWidth, vh = window.innerHeight;
+    let left = x, top = y;
+    if (left + rect.width > vw - 8) left = Math.max(8, vw - rect.width - 8);
+    if (top + rect.height > vh - 8) top = Math.max(8, vh - rect.height - 8);
+    menu.style.left = left + 'px';
+    menu.style.top = top + 'px';
+    menu.querySelectorAll('button').forEach(b => {
+        b.onclick = (e) => {
+            e.stopPropagation();
+            const act = b.dataset.act;
+            closeMsgMenu();
+            if (act === 'add' || act === 'edit') openBookmarkModal(idx, exist);
+            else if (act === 'del') {
+                removeBookmark(character.avatar, fileName, idx);
+                try { toastr.success(`已删除 #${idx} 书签`); } catch {}
+                renderReader();
+            }
+        };
+    });
+    setTimeout(() => {
+        const dismiss = () => closeMsgMenu();
+        document.addEventListener('click', dismiss, { once: true, capture: true });
+        document.addEventListener('contextmenu', dismiss, { once: true, capture: true });
+        document.addEventListener('touchstart', dismiss, { once: true, capture: true });
+    }, 0);
+}
+
+function openBookmarkModal(idx, existing) {
+    const { character, fileName, arr } = readerState;
+    if (!character || !arr) return;
+    const messages = arr.slice(1);
+    const m = messages[idx];
+    if (!m) return;
+    const rawMes = (typeof m.mes === 'string') ? m.mes : '';
+    const snippet = bmSnippet(rawMes);
+    const note = existing?.note || '';
+    closeModal();
+    const wrap = document.createElement('div');
+    wrap.className = 'cv-modal-backdrop';
+    wrap.id = 'cv_modal';
+    wrap.innerHTML = `
+        <div class="cv-modal" onclick="event.stopPropagation()">
+            <button class="cv-modal-close" id="cv_bm_close" type="button" title="关闭">${ICONS.close}</button>
+            <h3>${existing ? '编辑书签' : '添加书签'} · #${idx}</h3>
+            <div class="cv-modal-body">
+                <div class="cv-field">
+                    <label>预览</label>
+                    <div class="cv-bm-preview">${escapeHtml(snippet) || '（空）'}</div>
+                </div>
+                <div class="cv-field">
+                    <label>备注（可选，最多 40 字）</label>
+                    <input type="text" id="cv_bm_note" maxlength="40" placeholder="例如：两人第一次牵手" value="${escapeHtml(note)}"/>
+                </div>
+            </div>
+            <div class="cv-modal-actions">
+                <button class="cv-btn" id="cv_bm_cancel" type="button">取消</button>
+                <button class="cv-btn cv-btn-primary" id="cv_bm_save" type="button">${existing ? '保存修改' : '加入书签'}</button>
+            </div>
+        </div>
+    `;
+    wrap.onclick = closeModal;
+    document.getElementById('chatvault_panel').appendChild(wrap);
+    setTimeout(() => { const i = document.getElementById('cv_bm_note'); if (i) { i.focus(); i.select(); } }, 0);
+    document.getElementById('cv_bm_close').onclick = closeModal;
+    document.getElementById('cv_bm_cancel').onclick = closeModal;
+    const save = () => {
+        const noteVal = (document.getElementById('cv_bm_note')?.value || '').trim();
+        const ok = upsertBookmark(character.avatar, fileName, idx, snippet, noteVal);
+        if (!ok) return;
+        closeModal();
+        try { toastr.success(`已${existing ? '更新' : '添加'} #${idx} 书签`); } catch {}
+        renderReader();
+    };
+    document.getElementById('cv_bm_save').onclick = save;
+    wrap.querySelectorAll('input').forEach(inp => {
+        inp.onkeydown = (e) => {
+            if (e.key === 'Enter') save();
+            else if (e.key === 'Escape') closeModal();
+        };
+    });
+}
+
+function jumpToBookmark(b) {
+    if (!b) return;
+    const arr = readerState.arr;
+    if (!arr) return;
+    const messages = arr.slice(1);
+    if (!messages.length) return;
+    const want = bmFingerprint(b.snippet);
+    const fpAt = (i) => {
+        const m = messages[i];
+        if (!m || typeof m.mes !== 'string') return false;
+        if (!want) return true;
+        return bmFingerprint(m.mes) === want;
+    };
+    let found = -1;
+    if (b.idx >= 0 && b.idx < messages.length && fpAt(b.idx)) found = b.idx;
+    if (found < 0) {
+        for (let d = 1; d <= 30; d++) {
+            if (b.idx - d >= 0 && fpAt(b.idx - d)) { found = b.idx - d; break; }
+            if (b.idx + d < messages.length && fpAt(b.idx + d)) { found = b.idx + d; break; }
+        }
+    }
+    let drifted = false;
+    if (found < 0) {
+        drifted = true;
+        found = Math.min(messages.length - 1, Math.max(0, b.idx));
+    } else if (found !== b.idx) {
+        drifted = true;
+    }
+    const targetPage = Math.max(1, Math.ceil((found + 1) / READER_PAGE_SIZE));
+    readerState.page = targetPage;
+    readerState.settingsOpen = false;
+    renderReader();
+    requestAnimationFrame(() => {
+        const stage = document.querySelector('.cv-reader-stage');
+        const target = document.querySelector(`.cv-reader-msg[data-mes-idx="${found}"]`);
+        if (stage && target) {
+            const top = Math.max(0, target.offsetTop - 16);
+            stage.scrollTop = top;
+            target.classList.add('cv-bookmark-flash');
+            setTimeout(() => target.classList.remove('cv-bookmark-flash'), 1600);
+        }
+        if (drifted) {
+            try { toastr.warning(`书签 #${b.idx} 可能已失效，已跳到接近的 #${found}`); } catch {}
+        }
+    });
 }
 
 /* ============================================================
@@ -1813,6 +2047,27 @@ function renderReaderSettings(panel) {
                 </div>
             </div>
             <div class="cv-strip-box">
+                <div class="cv-strip-title">头部排版</div>
+                <div class="cv-field-hint">头像 / 名字 / 楼层号的对齐方式（不影响正文）。</div>
+                <div class="cv-reader-style-row">
+                    <label class="cv-reader-style-opt ${ (cfg.readerLayout||'default')==='default'?'is-on':'' }">
+                        <input type="radio" name="cv_r_layout" value="default" ${ (cfg.readerLayout||'default')==='default'?'checked':'' }/>
+                        <span class="cv-reader-style-name">默认</span>
+                        <span class="cv-reader-style-desc">头像左 · 楼层右</span>
+                    </label>
+                    <label class="cv-reader-style-opt ${ cfg.readerLayout==='center'?'is-on':'' }">
+                        <input type="radio" name="cv_r_layout" value="center" ${ cfg.readerLayout==='center'?'checked':'' }/>
+                        <span class="cv-reader-style-name">居中</span>
+                        <span class="cv-reader-style-desc">头像 / 名字 / 楼层全居中</span>
+                    </label>
+                    <label class="cv-reader-style-opt ${ cfg.readerLayout==='dialog'?'is-on':'' }">
+                        <input type="radio" name="cv_r_layout" value="dialog" ${ cfg.readerLayout==='dialog'?'checked':'' }/>
+                        <span class="cv-reader-style-name">左右分</span>
+                        <span class="cv-reader-style-desc">AI 在左 · 你在右</span>
+                    </label>
+                </div>
+            </div>
+                        <div class="cv-strip-box">
                 <div class="cv-strip-title">正文字号</div>
                 <div class="cv-reader-fontsize-row">
                     <input type="range" id="cv_r_fontsize" min="13" max="28" step="0.5" value="${cfg.readerFontSize || 15}"/>
@@ -1860,7 +2115,29 @@ function renderReaderSettings(panel) {
                     <div class="cv-field-hint" style="margin-top:6px">当前已绑定：${boundUA ? `<code>${escapeHtml(boundUA)}</code>` : '（无）'}</div>
                 `}
             </div>
-            <div class="cv-reader-settings-hint">摘取规则已搬到主面板每张卡片折叠区的「摘取规则」按钮，阅读 / 导出共用一套</div>
+            <div class="cv-strip-box cv-bm-box" data-collapsed="1">
+                <div class="cv-strip-title cv-bm-toggle" id="cv_r_bm_toggle">
+                    <span>📖 书签 (${ (rChar.avatar && rFile) ? getBookmarks(rChar.avatar, rFile).length : 0 })</span>
+                    <span class="cv-bm-chev">▾</span>
+                </div>
+                <div class="cv-bm-body" id="cv_r_bm_body" hidden>
+                    ${ (() => {
+                        const _list = (rChar.avatar && rFile) ? getBookmarks(rChar.avatar, rFile) : [];
+                        if (!_list.length) return '<div class="cv-field-hint">还没有书签。阅读时桌面端右键 / 移动端长按消息即可添加。</div>';
+                        return _list.map(b => `
+                            <div class="cv-bm-item" data-idx="${b.idx}">
+                                <button class="cv-bm-jump" type="button" title="跳转到 #${b.idx}">
+                                    <span class="cv-bm-floor">#${b.idx}</span>
+                                    <span class="cv-bm-text">${escapeHtml(b.note || b.snippet || '（无内容）')}</span>
+                                    ${ b.note && b.snippet ? `<span class="cv-bm-snippet">${escapeHtml(b.snippet)}</span>` : '' }
+                                </button>
+                                <button class="cv-bm-del" type="button" title="删除">${ICONS.trash}</button>
+                            </div>
+                        `).join('');
+                    })() }
+                </div>
+            </div>
+                        <div class="cv-reader-settings-hint">摘取规则已搬到主面板每张卡片折叠区的「摘取规则」按钮，阅读 / 导出共用一套</div>
         </div>
     `;
 
@@ -1882,6 +2159,42 @@ function renderReaderSettings(panel) {
             const c = loadSettings();
             saveSettings({ ...c, readerPagerMode: r.value === 'always' ? 'always' : 'autoHide' });
             renderReader();
+        };
+    });
+
+    panel.querySelectorAll('input[name="cv_r_layout"]').forEach(r => {
+        r.onchange = () => {
+            if (!r.checked) return;
+            const c = loadSettings();
+            saveSettings({ ...c, readerLayout: r.value });
+            const stage = document.querySelector('.cv-reader-stage');
+            if (stage) stage.dataset.layout = r.value;
+            panel.querySelectorAll('input[name="cv_r_layout"]').forEach(x => {
+                x.closest('.cv-reader-style-opt')?.classList.toggle('is-on', x.checked);
+            });
+        };
+    });
+
+    /* 书签分组：折叠 / 跳转 / 删除 */
+    const bmToggle = document.getElementById('cv_r_bm_toggle');
+    const bmBody = document.getElementById('cv_r_bm_body');
+    if (bmToggle && bmBody) bmToggle.onclick = () => {
+        bmBody.hidden = !bmBody.hidden;
+        bmToggle.parentElement.dataset.collapsed = bmBody.hidden ? '1' : '0';
+    };
+    panel.querySelectorAll('.cv-bm-item').forEach(item => {
+        const idx = Number(item.dataset.idx);
+        const jump = item.querySelector('.cv-bm-jump');
+        const del  = item.querySelector('.cv-bm-del');
+        if (jump) jump.onclick = (e) => {
+            e.stopPropagation();
+            const b = (rChar.avatar && rFile) ? findBookmark(rChar.avatar, rFile, idx) : null;
+            if (b) jumpToBookmark(b);
+        };
+        if (del) del.onclick = (e) => {
+            e.stopPropagation();
+            removeBookmark(rChar.avatar, rFile, idx);
+            renderReaderSettings(panel);
         };
     });
 
