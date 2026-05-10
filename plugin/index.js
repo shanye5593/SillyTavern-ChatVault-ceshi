@@ -4,7 +4,7 @@
  * https://github.com/shanye5593/SillyTavern-ChatVault
  */
 
-const VERSION = '0.4.8-test';
+const VERSION = '0.4.9-test';
 const STORAGE_KEY = 'st-chatvault-meta';
 const SETTINGS_KEY = 'st-chatvault-settings';
 const PAGE_SIZE = 50;
@@ -61,6 +61,8 @@ const DEFAULT_SETTINGS = {
     readerHeadGap: 14,
     // 阅读模式段落之间间距 (em, 0.2-1.5)
     readerParaGap: 0.6,
+    // 阅读模式行间距 line-height (1.2-2.6, 默认 1.85)
+    readerLineHeight: 1.85,
     // v0.4.2 阅读模式头部排版： 'default' | 'center' | 'dialog'
     readerLayout: 'default',
     // 自定义字体（v0.3.31 起改成多字体优先级数组：[{family, url}, ...]）
@@ -1365,6 +1367,7 @@ function readerCfg() {
     const hs = Number(cfg.readerHeadScale);
     const hg = Number(cfg.readerHeadGap);
     const pg = Number(cfg.readerParaGap);
+    const lh = Number(cfg.readerLineHeight);
     return {
         strip:   { ...DEFAULT_STRIP,   ...(cfg.strip   || {}) },
         extract: { ...DEFAULT_EXTRACT, ...(cfg.extract || {}) },
@@ -1378,6 +1381,7 @@ function readerCfg() {
         headScale: (Number.isFinite(hs) && hs >= 0.8 && hs <= 1.8) ? hs : 1.0,
         headGap:   (Number.isFinite(hg) && hg >= 4 && hg <= 32) ? hg : 14,
         paraGap:   (Number.isFinite(pg) && pg >= 0.2 && pg <= 1.5) ? pg : 0.6,
+        lineHeight:(Number.isFinite(lh) && lh >= 1.2 && lh <= 2.6) ? lh : 1.85,
         indent: !!cfg.readerIndent,
         layout: ['default','center','dialog'].includes(cfg.readerLayout) ? cfg.readerLayout : 'default',
     };
@@ -1394,7 +1398,7 @@ function renderReader() {
 
     // 悬浮覆层（按钮 + 设置面板 + 分页器都从 stage 移出，作为 cv_body 的直接子节点）
     // 这样它们才真正"悬浮"——不会随 stage 滚动消失
-    const stageStyle = `--cv-reader-font-size:${cfgPre.fontSize}px;--cv-reader-head-scale:${cfgPre.headScale};--cv-reader-head-gap:${cfgPre.headGap}px;--cv-reader-para-gap:${cfgPre.paraGap}em`;
+    const stageStyle = `--cv-reader-font-size:${cfgPre.fontSize}px;--cv-reader-head-scale:${cfgPre.headScale};--cv-reader-head-gap:${cfgPre.headGap}px;--cv-reader-para-gap:${cfgPre.paraGap}em;--cv-reader-line-height:${cfgPre.lineHeight}`;
     const stageOpen = `<div class="cv-reader-stage" data-pager-mode="${cfgPre.pagerMode}" data-indent="${cfgPre.indent ? '1' : '0'}" data-layout="${cfgPre.layout}" style="${stageStyle}"><div class="cv-reader-column">`;
     const stageClose = `</div></div>`;
     const overlayHtml = `
@@ -2080,6 +2084,11 @@ function renderReaderSettings(panel) {
                     <input type="range" id="cv_r_paragap" min="0.2" max="1.5" step="0.05" value="${(Number(cfg.readerParaGap) || 0.6).toFixed(2)}"/>
                     <span class="cv-reader-fontsize-val" id="cv_r_paragap_val">${(Number(cfg.readerParaGap) || 0.6).toFixed(2)}em</span>
                 </div>
+                <div class="cv-slider-label">行间距 <span class="cv-slider-label-sub">同段内上下行的距离</span></div>
+                <div class="cv-reader-fontsize-row">
+                    <input type="range" id="cv_r_lineheight" min="1.2" max="2.6" step="0.05" value="${(Number(cfg.readerLineHeight) || 1.85).toFixed(2)}"/>
+                    <span class="cv-reader-fontsize-val" id="cv_r_lineheight_val">${(Number(cfg.readerLineHeight) || 1.85).toFixed(2)}</span>
+                </div>
                 <div class="cv-slider-label">头部到正文间距 <span class="cv-slider-label-sub">角色名下方留白</span></div>
                 <div class="cv-reader-fontsize-row">
                     <input type="range" id="cv_r_headgap" min="4" max="32" step="1" value="${Number(cfg.readerHeadGap) || 14}"/>
@@ -2232,6 +2241,23 @@ function renderReaderSettings(panel) {
         };
         pgInput.oninput  = () => apply(false);
         pgInput.onchange = () => apply(true);
+    }
+    // 行间距滑块（unitless line-height）
+    const lhInput = document.getElementById('cv_r_lineheight');
+    const lhVal   = document.getElementById('cv_r_lineheight_val');
+    if (lhInput) {
+        const apply = (save) => {
+            const v = Math.max(1.2, Math.min(2.6, Number(lhInput.value) || 1.85));
+            if (lhVal) lhVal.textContent = v.toFixed(2);
+            const stage = document.querySelector('.cv-reader-stage');
+            if (stage) stage.style.setProperty('--cv-reader-line-height', String(v));
+            if (save) {
+                const c = loadSettings();
+                saveSettings({ ...c, readerLineHeight: v });
+            }
+        };
+        lhInput.oninput  = () => apply(false);
+        lhInput.onchange = () => apply(true);
     }
     // 头部到正文间距滑块（px）
     const hgInput = document.getElementById('cv_r_headgap');
