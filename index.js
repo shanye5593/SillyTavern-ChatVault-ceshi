@@ -4,7 +4,7 @@
  * https://github.com/shanye5593/SillyTavern-ChatVault
  */
 
-const VERSION = '0.3.35-test';
+const VERSION = '0.3.36-test';
 const STORAGE_KEY = 'st-chatvault-meta';
 const SETTINGS_KEY = 'st-chatvault-settings';
 const PAGE_SIZE = 50;
@@ -12,7 +12,7 @@ const THEMES = [
     { id: 'dark',   name: '夜间 Dark' },
     { id: 'light',  name: '白底 Light' },
     { id: 'coffee', name: '咖啡 Coffee' },
-    { id: 'custom', name: '自定义（使用下方配色面板）' },
+    { id: 'custom', name: '自定义' },
 ];
 const DEFAULT_STRIP = {
     thinking: true,
@@ -2709,14 +2709,14 @@ function injectSettings() {
           <!-- 字体设置（折叠） -->
           <div class="inline-drawer cv-sub-drawer">
             <div class="inline-drawer-toggle inline-drawer-header">
-              <b>🔤 字体设置（多字体优先级）</b>
+              <b>字体设置（多字体优先级）</b>
               <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
             </div>
             <div class="inline-drawer-content">
               <div class="cv-settings-hint" style="margin-bottom:8px;">
-                按上下顺序排优先级；浏览器会逐字符回退到第一个有该字形的字体。<br>
+                💡 按上下顺序排优先级；浏览器会逐字符回退到第一个有该字形的字体。<br>
                 例如想英/日/中混排都好看：英文字体放第一，日文字体放第二，中文字体放第三。<br>
-                URL 字体由浏览器直接请求该地址，请确认来源可信；只在 ChatVault 内生效，不影响酒馆其它界面。
+                ⚠️ URL 字体由浏览器直接请求该地址，请确认来源可信；只在 ChatVault 内生效，不影响酒馆其它界面。
               </div>
               <div id="cv_font_list" class="cv-font-list"></div>
               <div class="cv-settings-row">
@@ -2766,8 +2766,8 @@ function injectSettings() {
                 <button id="cv_set_window_reset" class="menu_button cv-inline-btn">⟲ 复位窗口位置/缩放</button>
               </div>
               <div class="cv-settings-hint">
-                拖标题栏移动；右下角 ⌟ 角等比缩放（0.4×–3.0×，不会破坏内部排版）；状态自动记忆。<br>
-                自定义快捷键时请避开酒馆/浏览器已用组合（如 Ctrl+S、F5）；在输入框焦点时快捷键不会触发。
+                🖥️ 拖标题栏移动；右下角 ⌟ 角等比缩放（0.4×–3.0×，不会破坏内部排版）；状态自动记忆。<br>
+                ⚠️ 自定义快捷键时请避开酒馆/浏览器已用组合（如 Ctrl+S、F5）；在输入框焦点时快捷键不会触发。
               </div>
             </div>
           </div>
