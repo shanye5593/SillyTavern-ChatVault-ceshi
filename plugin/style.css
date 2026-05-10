@@ -1169,7 +1169,7 @@
 }
 .cv-reader-msg-head {
     display: flex; align-items: center; gap: 8px;
-    margin-bottom: 8px; font-size: 12px;
+    margin-bottom: 14px; font-size: 12px;
 }
 .cv-reader-msg-avatar {
     width: 24px; height: 24px; border-radius: 50%; object-fit: cover;
@@ -1878,13 +1878,21 @@
  * v0.4.2 阅读模式头部排版三方案 + 书签
  * ============================================================ */
 
-/* —— 排版：居中 —— */
+/* —— 排版：居中 —— 三层式：头像 ↓ 名字 ↓ 楼层 —— */
 .cv-reader-stage[data-layout="center"] .cv-reader-msg-head {
+    flex-direction: column;
+    align-items: center;
     justify-content: center;
-    flex-wrap: wrap;
+    gap: calc(4px * var(--cv-reader-head-scale, 1));
+    margin-bottom: 16px;
 }
 .cv-reader-stage[data-layout="center"] .cv-reader-msg-floor {
-    margin-left: 8px;
+    margin-left: 0;
+    margin-top: 2px;
+}
+/* 居中模式下名字单独一行更醒目 */
+.cv-reader-stage[data-layout="center"] .cv-reader-msg-who {
+    font-size: calc(13px * var(--cv-reader-head-scale, 1));
 }
 
 /* —— 排版：左右分（仅 head 翻转，正文照旧） —— */
