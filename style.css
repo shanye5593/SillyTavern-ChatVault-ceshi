@@ -1872,3 +1872,157 @@
     margin-top: -4px;
     margin-bottom: 12px;
 }
+
+
+/* ============================================================
+ * v0.4.2 阅读模式头部排版三方案 + 书签
+ * ============================================================ */
+
+/* —— 排版：居中 —— */
+.cv-reader-stage[data-layout="center"] .cv-reader-msg-head {
+    justify-content: center;
+    flex-wrap: wrap;
+}
+.cv-reader-stage[data-layout="center"] .cv-reader-msg-floor {
+    margin-left: 8px;
+}
+
+/* —— 排版：左右分（仅 head 翻转，正文照旧） —— */
+.cv-reader-stage[data-layout="dialog"] .cv-reader-msg.is-user .cv-reader-msg-head {
+    flex-direction: row-reverse;
+}
+.cv-reader-stage[data-layout="dialog"] .cv-reader-msg.is-user .cv-reader-msg-floor {
+    margin-left: 0;
+    margin-right: auto;
+}
+
+/* —— 右键 / 长按消息菜单 —— */
+.cv-msg-menu {
+    position: fixed;
+    z-index: 99999;
+    min-width: 168px;
+    background: var(--cv-bg-panel, #1f2230);
+    color: var(--cv-text, #e4e5e7);
+    border: 1px solid var(--cv-border, rgba(255,255,255,0.14));
+    border-radius: 10px;
+    box-shadow: 0 10px 28px rgba(0,0,0,0.45);
+    padding: 4px;
+    display: flex;
+    flex-direction: column;
+}
+.cv-msg-menu button {
+    background: transparent;
+    border: 0;
+    color: inherit;
+    padding: 9px 12px;
+    text-align: left;
+    cursor: pointer;
+    border-radius: 6px;
+    font-size: 13px;
+    font-family: inherit;
+}
+.cv-msg-menu button:hover {
+    background: color-mix(in srgb, currentColor 12%, transparent);
+}
+
+/* —— 跳转后短暂高亮 —— */
+.cv-reader-msg.cv-bookmark-flash {
+    animation: cv-bm-flash 1.5s ease-out;
+}
+@keyframes cv-bm-flash {
+    0%   { box-shadow: 0 0 0 3px var(--cv-accent, #6e8efb), 0 0 18px 2px color-mix(in srgb, var(--cv-accent, #6e8efb) 60%, transparent); }
+    100% { box-shadow: 0 0 0 0 transparent, 0 0 0 0 transparent; }
+}
+
+/* —— 书签预览 modal 内容块 —— */
+.cv-bm-preview {
+    font-size: 13px;
+    padding: 8px 10px;
+    background: color-mix(in srgb, currentColor 6%, transparent);
+    border-radius: 6px;
+    opacity: .85;
+    word-break: break-word;
+    white-space: pre-wrap;
+}
+
+/* —— 书签设置面板分组 —— */
+.cv-bm-box .cv-bm-toggle {
+    cursor: pointer;
+    display: flex !important;
+    align-items: center;
+    justify-content: space-between;
+    user-select: none;
+    margin-bottom: 0;
+}
+.cv-bm-chev {
+    transition: transform .2s;
+    opacity: .6;
+    font-size: 14px;
+}
+.cv-bm-box[data-collapsed="0"] .cv-bm-chev { transform: rotate(180deg); }
+.cv-bm-body {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 8px;
+}
+.cv-bm-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: color-mix(in srgb, currentColor 5%, transparent);
+    border-radius: 6px;
+    overflow: hidden;
+}
+.cv-bm-jump {
+    flex: 1;
+    background: transparent;
+    border: 0;
+    color: inherit;
+    padding: 8px 10px;
+    text-align: left;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    font-family: inherit;
+}
+.cv-bm-jump:hover { background: color-mix(in srgb, currentColor 8%, transparent); }
+.cv-bm-floor {
+    font-variant-numeric: tabular-nums;
+    font-size: 12px;
+    opacity: .65;
+    flex-shrink: 0;
+}
+.cv-bm-text {
+    flex: 1;
+    font-size: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+}
+.cv-bm-snippet {
+    font-size: 11px;
+    opacity: .45;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 38%;
+    flex-shrink: 0;
+}
+.cv-bm-del {
+    background: transparent;
+    border: 0;
+    color: inherit;
+    opacity: .4;
+    cursor: pointer;
+    padding: 8px;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.cv-bm-del:hover { opacity: 1; color: var(--cv-danger, #e06c75); }
+.cv-bm-del svg { width: 14px; height: 14px; }
