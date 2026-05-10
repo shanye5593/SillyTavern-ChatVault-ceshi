@@ -1583,12 +1583,6 @@
         transform-origin: top left !important;
     }
 
-    /* 最大化：等比 fit-to-screen，由 JS 直接设 transform，CSS 只去圆角 */
-    #chatvault_overlay #chatvault_panel.cv-maximized {
-        border-radius: 0 !important;
-    }
-    #chatvault_overlay #chatvault_panel.cv-maximized .cv-resize-handle { display: none !important; }
-
     /* 标题栏可拖动（输入框/按钮区例外） */
     #chatvault_panel .cv-header {
         cursor: move;
@@ -1638,4 +1632,99 @@
         border-bottom-right-radius: 3px;
         pointer-events: none;
     }
+}
+
+/* ============================================================
+ *  设置面板 UI（v0.3.31：嵌套折叠 + 多字体管理）
+ * ============================================================ */
+
+/* 嵌套折叠面板的轻装饰 */
+.cv-sub-drawer {
+    margin: 8px 0;
+    border: 1px solid rgba(127, 127, 127, 0.2);
+    border-radius: 6px;
+    padding: 4px 8px;
+}
+.cv-sub-drawer > .inline-drawer-toggle {
+    padding: 4px 0;
+}
+.cv-sub-drawer > .inline-drawer-content {
+    padding: 6px 0 4px;
+}
+
+/* 设置里所有按钮都不应被压缩成竖排 */
+#chatvault_settings .cv-settings-row .menu_button.cv-inline-btn {
+    display: inline-flex;
+    align-items: center;
+    width: auto;
+    min-width: 0;
+    white-space: nowrap;
+    padding: 6px 14px;
+}
+
+/* 多字体行 */
+.cv-font-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+.cv-font-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px;
+    border: 1px solid rgba(127, 127, 127, 0.2);
+    border-radius: 6px;
+    background: rgba(127, 127, 127, 0.05);
+}
+.cv-font-row-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 2px;
+}
+.cv-font-idx {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    height: 22px;
+    padding: 0 6px;
+    border-radius: 11px;
+    background: var(--cv-accent, #6e8efb);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 600;
+    margin-right: 4px;
+}
+.cv-font-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border: 1px solid rgba(127, 127, 127, 0.3);
+    background: transparent;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+}
+.cv-font-btn:hover:not([disabled]) {
+    background: rgba(127, 127, 127, 0.15);
+}
+.cv-font-btn[disabled] {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+.cv-font-del {
+    margin-left: auto;
+    color: #d66;
+    font-size: 18px;
+}
+.cv-font-input {
+    width: 100%;
+    box-sizing: border-box;
 }

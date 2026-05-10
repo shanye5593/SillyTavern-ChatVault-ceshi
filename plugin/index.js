@@ -4,7 +4,7 @@
  * https://github.com/shanye5593/SillyTavern-ChatVault
  */
 
-const VERSION = '0.3.30-test';
+const VERSION = '0.3.31-test';
 const STORAGE_KEY = 'st-chatvault-meta';
 const SETTINGS_KEY = 'st-chatvault-settings';
 const PAGE_SIZE = 50;
@@ -56,14 +56,13 @@ const DEFAULT_SETTINGS = {
     readerFontSize: 15,
     // 阅读模式段落首行缩进
     readerIndent: false,
-    // 自定义字体（v0.3.25 起，全局应用到 ChatVault 面板与阅读模式）
-    customFontFamily: '',
-    customFontUrl: '',
+    // 自定义字体（v0.3.31 起改成多字体优先级数组：[{family, url}, ...]）
+    customFonts: [],
     // 桌面窗口模式（v0.3.27 起，仅桌面端生效，手机端完全跳过）
     windowFreeMode: false,             // 自由模式：去掉遮罩，可同时操作酒馆
     windowHotkey: false,               // 是否启用全局快捷键开关面板
     windowHotkeyCombo: 'Alt+V',        // 快捷键组合
-    windowState: null,                 // 记忆位置：{ x, y, w, h, maximized }
+    windowState: null,                 // 记忆位置：{ x, y, scale }
 };
 
 function loadSettings() {
@@ -77,6 +76,12 @@ function loadSettings() {
             delete s.readStrip; delete s.readExtract; delete s.userReadRules;
             try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); } catch {}
         }
+        // v0.3.31 迁移：单字体 -> 数组
+        if (!Array.isArray(s.customFonts)) s.customFonts = [];
+        if (s.customFonts.length === 0 && (s.customFontFamily || s.customFontUrl)) {
+            s.customFonts = [{ family: String(s.customFontFamily || ''), url: String(s.customFontUrl || '') }];
+        }
+        delete s.customFontFamily; delete s.customFontUrl;
         return s;
     } catch {
         return { ...DEFAULT_SETTINGS };
@@ -2318,11 +2323,11 @@ function isMobileLayout() {
 
 /* ----- v0.3.30-test：改成 transform: scale 等比缩放 -----
  * - 状态从 {x,y,w,h} 改成 {x,y,scale}
- * - scale 范围 0.6 ~ 2.0（最大化时不受上限约束，用 fit-to-screen 实现）
+ * - scale 范围 0.4 ~ 3.0（v0.3.31 起；移除了双击最大化以避免误触）
  * - 内部布局始终按"原生像素"排版，不会因为缩放错乱
  */
-const CV_MIN_SCALE = 0.6;
-const CV_MAX_SCALE = 2.0;
+const CV_MIN_SCALE = 0.4;
+const CV_MAX_SCALE = 3.0;
 
 function ensureNativeSize(panel) {
     if (panel._cvNative) return panel._cvNative;
@@ -2368,8 +2373,8 @@ function getCurrentState(panel) {
 function saveWindowStatePartial(patch) {
     const s = loadSettings();
     const cur = { ...(s.windowState || {}) };
-    // 清掉旧版本残留的 w/h 字段
-    delete cur.w; delete cur.h;
+    // 清掉旧版本残留的 w/h/maximized 字段
+    delete cur.w; delete cur.h; delete cur.maximized;
     saveSettings({ ...s, windowState: { ...cur, ...patch } });
 }
 
@@ -2384,22 +2389,6 @@ function applyWindowState(overlay, panel) {
         overlay.classList.add('cv-window-positioned');
         applyTransform(panel, st);
     }
-    if (st && st.maximized) {
-        // 最大化场景：用 fit-to-screen
-        ensureNativeSize(panel);
-        overlay.classList.add('cv-window-positioned');
-        panel.classList.add('cv-maximized');
-        _applyMaximizeTransform(panel);
-    }
-}
-
-function _applyMaximizeTransform(panel) {
-    const { w, h } = ensureNativeSize(panel);
-    const fit = Math.min(window.innerWidth / w, window.innerHeight / h);
-    panel.style.setProperty('left', '0px', 'important');
-    panel.style.setProperty('top', '0px', 'important');
-    panel.style.setProperty('transform', `scale(${fit})`, 'important');
-    panel.style.setProperty('transform-origin', 'top left', 'important');
 }
 
 function _ensurePositioned(overlay, panel) {
@@ -2420,7 +2409,6 @@ function _onPointerEnd(panel, cleanup) {
 
 function _bindDrag(panel, overlay, handle) {
     handle.addEventListener('pointerdown', (e) => {
-        if (panel.classList.contains('cv-maximized')) return;
         if (e.target.closest('input, button, select, textarea, a')) return;
         if (e.button !== 0) return;
         e.preventDefault();
@@ -2445,7 +2433,6 @@ function _bindDrag(panel, overlay, handle) {
 
 function _bindScaleResize(panel, overlay, handle) {
     handle.addEventListener('pointerdown', (e) => {
-        if (panel.classList.contains('cv-maximized')) return;
         if (e.button !== 0) return;
         e.preventDefault();
         e.stopPropagation();
@@ -2489,44 +2476,17 @@ function initWindowChrome(overlay, panel) {
     panel.appendChild(dragStrip);
     _bindDrag(panel, overlay, dragStrip);
 
-    // 标题栏拖动 + 双击最大化
+    // 标题栏拖动（不再绑 dblclick；双击最大化已移除以避免误触发）
     const header = panel.querySelector('.cv-header');
-    if (header) {
-        _bindDrag(panel, overlay, header);
-        header.addEventListener('dblclick', (e) => {
-            if (e.target.closest('input, button, select, textarea, a')) return;
-            toggleMaximize(panel);
-        });
-    }
+    if (header) _bindDrag(panel, overlay, header);
 
-    // 视口尺寸变化：重新夹回 / 重新 fit
+    // 视口尺寸变化：重新夹回
     const onWinResize = () => {
         if (isMobileLayout()) return;
-        if (panel.classList.contains('cv-maximized')) {
-            _applyMaximizeTransform(panel);
-            return;
-        }
         if (!overlay.classList.contains('cv-window-positioned')) return;
         applyTransform(panel, getCurrentState(panel));
     };
     window.addEventListener('resize', onWinResize);
-}
-
-function toggleMaximize(panel) {
-    const isMax = panel.classList.toggle('cv-maximized');
-    if (isMax) {
-        _ensurePositioned(panelEl, panel);
-        _applyMaximizeTransform(panel);
-    } else {
-        const s = loadSettings();
-        const st = s.windowState || {};
-        applyTransform(panel, {
-            x: typeof st.x === 'number' ? st.x : 0,
-            y: typeof st.y === 'number' ? st.y : 0,
-            scale: typeof st.scale === 'number' ? st.scale : 1,
-        });
-    }
-    saveWindowStatePartial({ maximized: isMax });
 }
 
 function resetWindow() {
@@ -2536,7 +2496,6 @@ function resetWindow() {
     if (!panelEl) return;
     const panel = document.getElementById('chatvault_panel');
     if (!panel) return;
-    panel.classList.remove('cv-maximized');
     panelEl.classList.remove('cv-window-positioned');
     panel.style.removeProperty('left');
     panel.style.removeProperty('top');
@@ -2596,24 +2555,30 @@ function applyCustomFont() {
         style.id = 'cv-custom-font-style';
         document.head.appendChild(style);
     }
-    const family = String(s.customFontFamily || '').trim();
-    const url = String(s.customFontUrl || '').trim();
-    if (!family && !url) { style.textContent = ''; return; }
+    const fonts = Array.isArray(s.customFonts) ? s.customFonts : [];
     // 消毒：去掉可能用来注入额外 CSS 规则的字符
-    const safeFamily = family.replace(/['"\\;{}<>]/g, '').trim();
-    const safeUrl = url.replace(/['"\\;<>]/g, '').trim();
-    // 关键：URL 字体永远用内部固定名字注册 @font-face，避免污染酒馆全局
-    // （否则像 'Inter' 这种常见名一旦被 @font-face 重新声明，酒馆所有用到 Inter 的地方都会跟着变）
-    const INTERNAL = '__cv_user_font__';
+    const sanitize = (v) => String(v || '').replace(/['"\\;{}<>]/g, '').trim();
+    const sanitizeUrl = (v) => String(v || '').replace(/['"\\;<>]/g, '').trim();
+    const cleaned = fonts.map(f => ({
+        family: sanitize(f && f.family),
+        url:    sanitizeUrl(f && f.url),
+    })).filter(f => f.family || f.url);
+    if (cleaned.length === 0) { style.textContent = ''; return; }
+    // 关键：每条 URL 字体都用独立的内部固定名注册，避免污染酒馆全局命名
+    // 优先级：第 1 条 URL 字体 → 第 1 条 family → 第 2 条 URL → 第 2 条 family → ... → 系统兜底
+    // 浏览器逐字符回退，所以 [英文, 日文, 中文] 这种排列会自动按字符找第一个有该字形的字体
+    let css = '';
     const stack = [];
-    if (safeUrl) stack.push(`'${INTERNAL}'`);
-    if (safeFamily) stack.push(`'${safeFamily}'`);
+    cleaned.forEach((f, i) => {
+        const internal = `__cv_user_font_${i}__`;
+        if (f.url) {
+            css += `@font-face { font-family: '${internal}'; src: url('${f.url}'); font-display: swap; }\n`;
+            stack.push(`'${internal}'`);
+        }
+        if (f.family) stack.push(`'${f.family}'`);
+    });
     stack.push('system-ui', '-apple-system', '"Segoe UI"', '"PingFang SC"',
                '"Hiragino Sans GB"', '"Microsoft YaHei"', 'sans-serif');
-    let css = '';
-    if (safeUrl) {
-        css += `@font-face { font-family: '${INTERNAL}'; src: url('${safeUrl}'); font-display: swap; }\n`;
-    }
     // 只在面板根上覆盖 font-family，靠 CSS 继承生效；不动 monospace 等显式声明
     css += `#chatvault_panel { font-family: ${stack.join(', ')}; }`;
     style.textContent = css;
@@ -2652,43 +2617,59 @@ function injectSettings() {
             </select>
           </div>
           <hr style="border:none; border-top:1px solid var(--cv-border, rgba(127,127,127,0.25)); margin:10px 0;">
-          <div class="cv-settings-row">
-            <label for="cv_set_font_family">字体名称：</label>
-            <input type="text" id="cv_set_font_family" class="text_pole" placeholder="留空 = 默认。例：霞鹜文楷 / Microsoft YaHei" value="${escapeHtml(s.customFontFamily || '')}">
+
+          <!-- 字体设置（折叠） -->
+          <div class="inline-drawer cv-sub-drawer">
+            <div class="inline-drawer-toggle inline-drawer-header">
+              <b>🔤 字体设置（多字体优先级）</b>
+              <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+            </div>
+            <div class="inline-drawer-content">
+              <div class="cv-settings-hint" style="margin-bottom:8px;">
+                💡 按上下顺序排优先级；浏览器会逐字符回退到第一个有该字形的字体。<br>
+                例如想英/日/中混排都好看：英文字体放第一，日文字体放第二，中文字体放第三。<br>
+                ⚠️ URL 字体由浏览器直接请求该地址，请确认来源可信；只在 ChatVault 内生效，不影响酒馆其它界面。
+              </div>
+              <div id="cv_font_list" class="cv-font-list"></div>
+              <div class="cv-settings-row">
+                <button id="cv_font_add" class="menu_button cv-inline-btn">＋ 添加一条字体</button>
+              </div>
+            </div>
           </div>
-          <div class="cv-settings-row">
-            <label for="cv_set_font_url">字体 URL（可选）：</label>
-            <input type="text" id="cv_set_font_url" class="text_pole" placeholder="https://.../font.woff2  仅当系统/酒馆未加载该字体时填写" value="${escapeHtml(s.customFontUrl || '')}">
+
+          <!-- PC 端窗口设置（折叠，默认收起防止手机端误触） -->
+          <div class="inline-drawer cv-sub-drawer">
+            <div class="inline-drawer-toggle inline-drawer-header">
+              <b>🖥️ PC 端窗口设置（手机端无效）</b>
+              <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+            </div>
+            <div class="inline-drawer-content">
+              <div class="cv-settings-row">
+                <label class="checkbox_label" for="cv_set_window_free">
+                  <input type="checkbox" id="cv_set_window_free" ${s.windowFreeMode ? 'checked' : ''}>
+                  <span>桌面自由窗口模式（去掉背景遮罩，可同时操作酒馆）</span>
+                </label>
+              </div>
+              <div class="cv-settings-row">
+                <label class="checkbox_label" for="cv_set_hotkey">
+                  <input type="checkbox" id="cv_set_hotkey" ${s.windowHotkey ? 'checked' : ''}>
+                  <span>启用全局快捷键开关面板</span>
+                </label>
+              </div>
+              <div class="cv-settings-row">
+                <label for="cv_set_hotkey_combo">快捷键组合：</label>
+                <input type="text" id="cv_set_hotkey_combo" class="text_pole" value="${escapeHtml(s.windowHotkeyCombo || 'Alt+V')}" placeholder="例：Alt+V / Ctrl+Shift+K">
+              </div>
+              <div class="cv-settings-row">
+                <button id="cv_set_window_reset" class="menu_button cv-inline-btn">⟲ 复位窗口位置/缩放</button>
+              </div>
+              <div class="cv-settings-hint">
+                🖥️ 拖标题栏移动；右下角 ⌟ 角等比缩放（0.4×–3.0×，不会破坏内部排版）；状态自动记忆。<br>
+                ⚠️ 自定义快捷键时请避开酒馆/浏览器已用组合（如 Ctrl+S、F5）；在输入框焦点时快捷键不会触发。
+              </div>
+            </div>
           </div>
-          <div class="cv-settings-hint">
-            💡 字体名 = 系统/酒馆里已有的字体名（用作回退）。填了 URL 才会真正下载字体；URL 字体只在 ChatVault 内生效，不影响酒馆其它界面。<br>
-            ⚠️ URL 字体由你的浏览器直接请求该地址，请确认来源可信。ChatVault 不会缓存或上传任何数据。
-          </div>
-          <hr style="border:none; border-top:1px solid var(--cv-border, rgba(127,127,127,0.25)); margin:10px 0;">
-          <div class="cv-settings-row">
-            <label class="checkbox_label" for="cv_set_window_free">
-              <input type="checkbox" id="cv_set_window_free" ${s.windowFreeMode ? 'checked' : ''}>
-              <span>桌面自由窗口模式（去掉背景遮罩，可同时操作酒馆）</span>
-            </label>
-          </div>
-          <div class="cv-settings-row">
-            <label class="checkbox_label" for="cv_set_hotkey">
-              <input type="checkbox" id="cv_set_hotkey" ${s.windowHotkey ? 'checked' : ''}>
-              <span>启用全局快捷键开关面板</span>
-            </label>
-          </div>
-          <div class="cv-settings-row">
-            <label for="cv_set_hotkey_combo">快捷键组合：</label>
-            <input type="text" id="cv_set_hotkey_combo" class="text_pole" value="${escapeHtml(s.windowHotkeyCombo || 'Alt+V')}" placeholder="例：Alt+V / Ctrl+Shift+K">
-          </div>
-          <div class="cv-settings-row">
-            <button id="cv_set_window_reset" class="menu_button">⟲ PC 端复位窗口</button>
-          </div>
-          <div class="cv-settings-hint">
-            🖥️ 桌面端：拖标题栏移动窗口；右下角 ⌟ 角等比缩放（0.6×–2.0×，不会破坏内部排版）；双击标题栏切换"适配屏幕"。状态自动记忆。<br>
-            📱 手机端不受影响，仍是满屏。<br>
-            ⚠️ 自定义快捷键时请避开酒馆/浏览器已用组合（如 Ctrl+S、F5），否则会冲突。在输入框/聊天框里时快捷键不会触发。
-          </div>
+
           <div class="cv-settings-hint">
             v${VERSION} · 设置实时生效，主题切换会立即应用到已打开的面板。
           </div>
@@ -2708,20 +2689,71 @@ function injectSettings() {
         if (panelEl) panelEl.className = currentThemeClass();
     });
 
-    // 字体设置：input 时去抖 300ms 保存并应用
+    // ----- 多字体管理 -----
+    const fontList = wrap.querySelector('#cv_font_list');
     let _fontDebounce;
-    const onFontChange = () => {
+    const renderFontList = () => {
+        const cur = loadSettings();
+        const fonts = Array.isArray(cur.customFonts) ? cur.customFonts : [];
+        if (fonts.length === 0) {
+            fontList.innerHTML = `<div class="cv-settings-hint" style="opacity:0.7;">还没有字体，点下方「添加」试试。留空就是用酒馆默认。</div>`;
+            return;
+        }
+        fontList.innerHTML = fonts.map((f, i) => `
+          <div class="cv-font-row" data-i="${i}">
+            <div class="cv-font-row-head">
+              <span class="cv-font-idx">${i + 1}</span>
+              <button class="cv-font-btn" data-act="up"   ${i === 0 ? 'disabled' : ''} title="上移">▲</button>
+              <button class="cv-font-btn" data-act="down" ${i === fonts.length - 1 ? 'disabled' : ''} title="下移">▼</button>
+              <button class="cv-font-btn cv-font-del" data-act="del" title="删除">×</button>
+            </div>
+            <input type="text" class="text_pole cv-font-input" data-field="family" placeholder="字体名（系统/酒馆已加载的；用作回退）" value="${escapeHtml(f.family || '')}">
+            <input type="text" class="text_pole cv-font-input" data-field="url"    placeholder="字体 URL（可选，以 https:// 开头的 .woff2/.ttf）" value="${escapeHtml(f.url || '')}">
+          </div>
+        `).join('');
+    };
+    const saveFontsDebounced = () => {
         clearTimeout(_fontDebounce);
         _fontDebounce = setTimeout(() => {
             const cur = loadSettings();
-            const ff = wrap.querySelector('#cv_set_font_family')?.value || '';
-            const fu = wrap.querySelector('#cv_set_font_url')?.value || '';
-            saveSettings({ ...cur, customFontFamily: ff.trim(), customFontUrl: fu.trim() });
+            const fonts = [...fontList.querySelectorAll('.cv-font-row')].map(row => ({
+                family: row.querySelector('[data-field="family"]').value.trim(),
+                url:    row.querySelector('[data-field="url"]').value.trim(),
+            }));
+            saveSettings({ ...cur, customFonts: fonts });
             applyCustomFont();
         }, 300);
     };
-    wrap.querySelector('#cv_set_font_family').addEventListener('input', onFontChange);
-    wrap.querySelector('#cv_set_font_url').addEventListener('input', onFontChange);
+    fontList.addEventListener('input', (e) => {
+        if (e.target.matches('.cv-font-input')) saveFontsDebounced();
+    });
+    fontList.addEventListener('click', (e) => {
+        const btn = e.target.closest('button[data-act]');
+        if (!btn) return;
+        e.preventDefault();
+        const row = btn.closest('.cv-font-row');
+        const i = Number(row.dataset.i);
+        const cur = loadSettings();
+        const fonts = [...(cur.customFonts || [])];
+        if (btn.dataset.act === 'up' && i > 0) {
+            [fonts[i - 1], fonts[i]] = [fonts[i], fonts[i - 1]];
+        } else if (btn.dataset.act === 'down' && i < fonts.length - 1) {
+            [fonts[i + 1], fonts[i]] = [fonts[i], fonts[i + 1]];
+        } else if (btn.dataset.act === 'del') {
+            fonts.splice(i, 1);
+        } else return;
+        saveSettings({ ...cur, customFonts: fonts });
+        applyCustomFont();
+        renderFontList();
+    });
+    wrap.querySelector('#cv_font_add').addEventListener('click', (e) => {
+        e.preventDefault();
+        const cur = loadSettings();
+        const fonts = [...(cur.customFonts || []), { family: '', url: '' }];
+        saveSettings({ ...cur, customFonts: fonts });
+        renderFontList();
+    });
+    renderFontList();
 
     // 桌面窗口设置
     wrap.querySelector('#cv_set_window_free').addEventListener('change', (e) => {
