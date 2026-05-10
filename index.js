@@ -4,7 +4,7 @@
  * https://github.com/shanye5593/SillyTavern-ChatVault
  */
 
-const VERSION = '0.3.24-test';
+const VERSION = '0.3.25-test';
 const STORAGE_KEY = 'st-chatvault-meta';
 const SETTINGS_KEY = 'st-chatvault-settings';
 const PAGE_SIZE = 50;
@@ -56,6 +56,9 @@ const DEFAULT_SETTINGS = {
     readerFontSize: 15,
     // 阅读模式段落首行缩进
     readerIndent: false,
+    // 自定义字体（v0.3.25 起，全局应用到 ChatVault 面板与阅读模式）
+    customFontFamily: '',
+    customFontUrl: '',
 };
 
 function loadSettings() {
@@ -2282,6 +2285,35 @@ function applyEnabledState() {
 }
 
 /* ============================================================
+ *  自定义字体（注入 <style>，全局作用于 ChatVault 面板）
+ * ============================================================ */
+
+function applyCustomFont() {
+    const s = loadSettings();
+    let style = document.getElementById('cv-custom-font-style');
+    if (!style) {
+        style = document.createElement('style');
+        style.id = 'cv-custom-font-style';
+        document.head.appendChild(style);
+    }
+    const family = String(s.customFontFamily || '').trim();
+    const url = String(s.customFontUrl || '').trim();
+    if (!family && !url) { style.textContent = ''; return; }
+    // 仅填 URL 没填字体名时，自动用 CVCustomFont 命名
+    let usedFamily = family || 'CVCustomFont';
+    // 简单消毒：去掉可能用来注入额外 CSS 规则的字符
+    const safeFamily = usedFamily.replace(/['"\\;{}<>]/g, '').trim() || 'CVCustomFont';
+    const safeUrl = url.replace(/['"\\;<>]/g, '').trim();
+    let css = '';
+    if (safeUrl) {
+        css += `@font-face { font-family: '${safeFamily}'; src: url('${safeUrl}'); font-display: swap; }\n`;
+    }
+    // 只在面板根上覆盖 font-family，靠 CSS 继承生效；不动 monospace 等显式声明
+    css += `#chatvault_panel { font-family: '${safeFamily}', system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; }`;
+    style.textContent = css;
+}
+
+/* ============================================================
  *  扩展设置面板（嵌入 ST「扩展」页）
  * ============================================================ */
 
@@ -2313,6 +2345,19 @@ function injectSettings() {
               ${THEMES.map(t => `<option value="${t.id}" ${s.theme === t.id ? 'selected' : ''}>${t.name}</option>`).join('')}
             </select>
           </div>
+          <hr style="border:none; border-top:1px solid var(--cv-border, rgba(127,127,127,0.25)); margin:10px 0;">
+          <div class="cv-settings-row">
+            <label for="cv_set_font_family">字体名称：</label>
+            <input type="text" id="cv_set_font_family" class="text_pole" placeholder="留空 = 默认。例：霞鹜文楷 / Microsoft YaHei" value="${escapeHtml(s.customFontFamily || '')}">
+          </div>
+          <div class="cv-settings-row">
+            <label for="cv_set_font_url">字体 URL（可选）：</label>
+            <input type="text" id="cv_set_font_url" class="text_pole" placeholder="https://.../font.woff2  仅当系统/酒馆未加载该字体时填写" value="${escapeHtml(s.customFontUrl || '')}">
+          </div>
+          <div class="cv-settings-hint">
+            💡 字体名 = 系统已装字体或下方 URL 加载字体的 font-family 名称。仅填 URL 会自动命名为 "CVCustomFont"。<br>
+            ⚠️ URL 字体由你的浏览器直接请求该地址，请确认来源可信。ChatVault 不会缓存或上传任何数据。
+          </div>
           <div class="cv-settings-hint">
             v${VERSION} · 设置实时生效，主题切换会立即应用到已打开的面板。
           </div>
@@ -2331,9 +2376,25 @@ function injectSettings() {
         saveSettings({ ...cur, theme: e.target.value });
         if (panelEl) panelEl.className = currentThemeClass();
     });
+
+    // 字体设置：input 时去抖 300ms 保存并应用
+    let _fontDebounce;
+    const onFontChange = () => {
+        clearTimeout(_fontDebounce);
+        _fontDebounce = setTimeout(() => {
+            const cur = loadSettings();
+            const ff = wrap.querySelector('#cv_set_font_family')?.value || '';
+            const fu = wrap.querySelector('#cv_set_font_url')?.value || '';
+            saveSettings({ ...cur, customFontFamily: ff.trim(), customFontUrl: fu.trim() });
+            applyCustomFont();
+        }, 300);
+    };
+    wrap.querySelector('#cv_set_font_family').addEventListener('input', onFontChange);
+    wrap.querySelector('#cv_set_font_url').addEventListener('input', onFontChange);
 }
 
 jQuery(async () => {
+    applyCustomFont();
     const tryInject = () => {
         if (document.getElementById('extensionsMenu')) applyEnabledState();
         if (document.getElementById('extensions_settings2')
