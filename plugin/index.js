@@ -4,7 +4,7 @@
  * https://github.com/shanye5593/SillyTavern-ChatVault
  */
 
-const VERSION = '0.3.31-test';
+const VERSION = '0.3.32-test';
 const STORAGE_KEY = 'st-chatvault-meta';
 const SETTINGS_KEY = 'st-chatvault-settings';
 const PAGE_SIZE = 50;
@@ -58,6 +58,9 @@ const DEFAULT_SETTINGS = {
     readerIndent: false,
     // 自定义字体（v0.3.31 起改成多字体优先级数组：[{family, url}, ...]）
     customFonts: [],
+    // 自定义配色（v0.3.32 起；只覆盖填了的字段，其它跟随主题）
+    // 形如 { accent:'#34d399', bgPanel:'#212327', bgCard:'#2a2d32', text:'#e4e5e7', overlayAlpha:0.55 }
+    customColors: {},
     // 桌面窗口模式（v0.3.27 起，仅桌面端生效，手机端完全跳过）
     windowFreeMode: false,             // 自由模式：去掉遮罩，可同时操作酒馆
     windowHotkey: false,               // 是否启用全局快捷键开关面板
@@ -2585,6 +2588,55 @@ function applyCustomFont() {
 }
 
 /* ============================================================
+ *  自定义配色（覆盖当前主题的 CSS 变量）
+ *  - 选择器用 #chatvault_panel（特异性 1,0,0），稳定胜过 .cv-theme-*（0,1,0）
+ *  - 每项独立可清除；未填的字段保持主题原值
+ *  - accent-muted / bgCard-hover 用 color-mix 自动派生，避免手动配错
+ * ============================================================ */
+const CV_COLOR_DEFAULTS = {
+    accent: '#34d399',
+    bgPanel: '#212327',
+    bgCard: '#2a2d32',
+    text: '#e4e5e7',
+    overlayAlpha: 0.55,
+};
+function applyCustomColors() {
+    const s = loadSettings();
+    let style = document.getElementById('cv-custom-colors-style');
+    if (!style) {
+        style = document.createElement('style');
+        style.id = 'cv-custom-colors-style';
+        document.head.appendChild(style);
+    }
+    const c = s.customColors || {};
+    const isHex = (v) => /^#[0-9a-fA-F]{6}$/.test(String(v || '').trim());
+    const accent  = isHex(c.accent)  ? c.accent.trim()  : '';
+    const bgPanel = isHex(c.bgPanel) ? c.bgPanel.trim() : '';
+    const bgCard  = isHex(c.bgCard)  ? c.bgCard.trim()  : '';
+    const text    = isHex(c.text)    ? c.text.trim()    : '';
+    const overlayAlpha = (typeof c.overlayAlpha === 'number' && c.overlayAlpha >= 0 && c.overlayAlpha <= 1)
+        ? c.overlayAlpha : null;
+    const rules = [];
+    if (accent) {
+        rules.push(`--cv-accent: ${accent};`);
+        rules.push(`--cv-accent-muted: color-mix(in srgb, ${accent} 15%, transparent);`);
+    }
+    if (bgPanel) rules.push(`--cv-bg-panel: ${bgPanel};`);
+    if (bgCard) {
+        rules.push(`--cv-bg-card: ${bgCard};`);
+        rules.push(`--cv-bg-card-hover: color-mix(in srgb, ${bgCard} 88%, var(--cv-text-primary, #888) 12%);`);
+    }
+    if (text) {
+        rules.push(`--cv-text-primary: ${text};`);
+        // 二级文字按主文字混 50% 派生，保持层次
+        rules.push(`--cv-text-secondary: color-mix(in srgb, ${text} 65%, transparent);`);
+        rules.push(`--cv-text-tertiary: color-mix(in srgb, ${text} 42%, transparent);`);
+    }
+    if (overlayAlpha !== null) rules.push(`--cv-bg-overlay: rgba(0,0,0,${overlayAlpha});`);
+    style.textContent = rules.length ? `#chatvault_panel { ${rules.join(' ')} }` : '';
+}
+
+/* ============================================================
  *  扩展设置面板（嵌入 ST「扩展」页）
  * ============================================================ */
 
@@ -2633,6 +2685,24 @@ function injectSettings() {
               <div id="cv_font_list" class="cv-font-list"></div>
               <div class="cv-settings-row">
                 <button id="cv_font_add" class="menu_button cv-inline-btn">＋ 添加一条字体</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 自定义配色（折叠） -->
+          <div class="inline-drawer cv-sub-drawer">
+            <div class="inline-drawer-toggle inline-drawer-header">
+              <b>🎨 自定义配色（覆盖当前主题）</b>
+              <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+            </div>
+            <div class="inline-drawer-content">
+              <div class="cv-settings-hint" style="margin-bottom:8px;">
+                💡 任何一项填了都只覆盖那一项，其它仍跟随上面选的「配色方案」。<br>
+                切换主题不会清空自定义颜色；按 × 清除该项即回退到主题色。
+              </div>
+              <div id="cv_color_grid" class="cv-color-grid"></div>
+              <div class="cv-settings-row" style="margin-top:8px;">
+                <button id="cv_color_reset_all" class="menu_button cv-inline-btn">⟲ 全部恢复主题默认</button>
               </div>
             </div>
           </div>
@@ -2755,6 +2825,100 @@ function injectSettings() {
     });
     renderFontList();
 
+    // ----- 自定义配色 -----
+    const colorGrid = wrap.querySelector('#cv_color_grid');
+    const COLOR_FIELDS = [
+        { key: 'accent',  label: '主色（按钮/强调）',  type: 'color' },
+        { key: 'bgPanel', label: '面板背景',           type: 'color' },
+        { key: 'bgCard',  label: '卡片背景',           type: 'color' },
+        { key: 'text',    label: '正文文字',           type: 'color' },
+        { key: 'overlayAlpha', label: '背景遮罩不透明度', type: 'range' },
+    ];
+    const renderColorGrid = () => {
+        const cur = loadSettings();
+        const cc = cur.customColors || {};
+        colorGrid.innerHTML = COLOR_FIELDS.map(f => {
+            const overriding = (f.key in cc) && cc[f.key] !== undefined && cc[f.key] !== '';
+            const dft = CV_COLOR_DEFAULTS[f.key];
+            if (f.type === 'color') {
+                const val = overriding ? cc[f.key] : dft;
+                return `
+                  <div class="cv-color-row ${overriding ? 'cv-cc-on' : ''}" data-cc-key="${f.key}">
+                    <span class="cv-cc-dot" title="${overriding ? '覆盖中' : '跟随主题'}"></span>
+                    <label>${f.label}</label>
+                    <input type="color" data-cc-input="${f.key}" value="${val}">
+                    <button class="cv-cc-clear" data-cc-clear="${f.key}" title="清除（跟随主题）" ${overriding ? '' : 'disabled'}>×</button>
+                  </div>
+                `;
+            } else {
+                const pct = overriding ? Math.round(cc[f.key] * 100) : Math.round(dft * 100);
+                return `
+                  <div class="cv-color-row ${overriding ? 'cv-cc-on' : ''}" data-cc-key="${f.key}">
+                    <span class="cv-cc-dot" title="${overriding ? '覆盖中' : '跟随主题'}"></span>
+                    <label>${f.label} <span class="cv-cc-pct" data-cc-pct="${f.key}">${pct}%</span></label>
+                    <input type="range" min="0" max="100" data-cc-input="${f.key}" value="${pct}">
+                    <button class="cv-cc-clear" data-cc-clear="${f.key}" title="清除（跟随主题）" ${overriding ? '' : 'disabled'}>×</button>
+                  </div>
+                `;
+            }
+        }).join('');
+    };
+    let _colorDebounce;
+    const saveColorDebounced = (key, raw) => {
+        clearTimeout(_colorDebounce);
+        _colorDebounce = setTimeout(() => {
+            const cur = loadSettings();
+            const cc = { ...(cur.customColors || {}) };
+            if (key === 'overlayAlpha') {
+                const n = Math.max(0, Math.min(100, Number(raw))) / 100;
+                cc[key] = n;
+            } else {
+                cc[key] = String(raw);
+            }
+            saveSettings({ ...cur, customColors: cc });
+            applyCustomColors();
+            // 局部刷新行状态而不是全量 re-render，避免打断滑块/取色器交互
+            const row = colorGrid.querySelector(`[data-cc-key="${key}"]`);
+            if (row) {
+                row.classList.add('cv-cc-on');
+                const clearBtn = row.querySelector('[data-cc-clear]');
+                if (clearBtn) clearBtn.disabled = false;
+                const dot = row.querySelector('.cv-cc-dot');
+                if (dot) dot.title = '覆盖中';
+            }
+        }, 150);
+    };
+    colorGrid.addEventListener('input', (e) => {
+        const inp = e.target.closest('[data-cc-input]');
+        if (!inp) return;
+        const key = inp.dataset.ccInput;
+        if (key === 'overlayAlpha') {
+            const pctEl = colorGrid.querySelector(`[data-cc-pct="${key}"]`);
+            if (pctEl) pctEl.textContent = `${inp.value}%`;
+        }
+        saveColorDebounced(key, inp.value);
+    });
+    colorGrid.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-cc-clear]');
+        if (!btn || btn.disabled) return;
+        e.preventDefault();
+        const key = btn.dataset.ccClear;
+        const cur = loadSettings();
+        const cc = { ...(cur.customColors || {}) };
+        delete cc[key];
+        saveSettings({ ...cur, customColors: cc });
+        applyCustomColors();
+        renderColorGrid();
+    });
+    wrap.querySelector('#cv_color_reset_all').addEventListener('click', (e) => {
+        e.preventDefault();
+        const cur = loadSettings();
+        saveSettings({ ...cur, customColors: {} });
+        applyCustomColors();
+        renderColorGrid();
+    });
+    renderColorGrid();
+
     // 桌面窗口设置
     wrap.querySelector('#cv_set_window_free').addEventListener('change', (e) => {
         const cur = loadSettings();
@@ -2782,6 +2946,7 @@ function injectSettings() {
 
 jQuery(async () => {
     applyCustomFont();
+    applyCustomColors();
     setupHotkey();
     const tryInject = () => {
         if (document.getElementById('extensionsMenu')) applyEnabledState();

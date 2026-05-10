@@ -1728,3 +1728,81 @@
     width: 100%;
     box-sizing: border-box;
 }
+
+/* ============================================================
+ *  自定义配色 UI（v0.3.32）
+ * ============================================================ */
+.cv-color-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.cv-color-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border: 1px solid rgba(127, 127, 127, 0.18);
+    border-radius: 6px;
+    background: rgba(127, 127, 127, 0.04);
+}
+.cv-color-row.cv-cc-on {
+    border-color: rgba(127, 127, 127, 0.45);
+    background: rgba(127, 127, 127, 0.10);
+}
+.cv-color-row > label {
+    flex: 1;
+    min-width: 0;
+    font-size: 13px;
+    margin: 0;
+}
+.cv-color-row .cv-cc-pct {
+    opacity: 0.7;
+    font-variant-numeric: tabular-nums;
+    margin-left: 4px;
+}
+.cv-cc-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: rgba(127, 127, 127, 0.4);
+    flex-shrink: 0;
+}
+.cv-color-row.cv-cc-on .cv-cc-dot {
+    background: var(--cv-accent, #34d399);
+    box-shadow: 0 0 6px var(--cv-accent, #34d399);
+}
+.cv-color-row input[type="color"] {
+    width: 36px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid rgba(127, 127, 127, 0.3);
+    border-radius: 4px;
+    cursor: pointer;
+    background: transparent;
+}
+.cv-color-row input[type="range"] {
+    width: 140px;
+}
+.cv-cc-clear {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 1px solid rgba(127, 127, 127, 0.3);
+    background: transparent;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    color: #d66;
+}
+.cv-cc-clear:hover:not([disabled]) {
+    background: rgba(214, 102, 102, 0.12);
+}
+.cv-cc-clear[disabled] {
+    opacity: 0.25;
+    cursor: not-allowed;
+}
