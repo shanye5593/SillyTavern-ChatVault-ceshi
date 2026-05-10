@@ -4,7 +4,7 @@
  * https://github.com/shanye5593/SillyTavern-ChatVault
  */
 
-const VERSION = '0.3.26-test';
+const VERSION = '0.3.27-test';
 const STORAGE_KEY = 'st-chatvault-meta';
 const SETTINGS_KEY = 'st-chatvault-settings';
 const PAGE_SIZE = 50;
@@ -59,6 +59,11 @@ const DEFAULT_SETTINGS = {
     // 自定义字体（v0.3.25 起，全局应用到 ChatVault 面板与阅读模式）
     customFontFamily: '',
     customFontUrl: '',
+    // 桌面窗口模式（v0.3.27 起，仅桌面端生效，手机端完全跳过）
+    windowFreeMode: false,             // 自由模式：去掉遮罩，可同时操作酒馆
+    windowHotkey: false,               // 是否启用全局快捷键开关面板
+    windowHotkeyCombo: 'Alt+V',        // 快捷键组合
+    windowState: null,                 // 记忆位置：{ x, y, w, h, maximized }
 };
 
 function loadSettings() {
@@ -496,6 +501,7 @@ function openPanel() {
                 </div>
                 <div class="cv-header-actions">
                     <button class="cv-icon-btn cv-refresh-btn" id="cv_refresh" title="手动刷新（重新加载所有角色和聊天）">${ICONS.refresh}</button>
+                    <button class="cv-icon-btn cv-reset-btn" id="cv_reset" title="复位窗口（清除拖动/拉伸/最大化）">⟲</button>
                     <button class="cv-icon-btn" id="cv_close" title="关闭 (Esc)">✕</button>
                 </div>
             </div>
@@ -514,10 +520,20 @@ function openPanel() {
             </div>
         </div>
     `;
-    panelEl.addEventListener('click', closePanel);
+    panelEl.addEventListener('click', (e) => {
+        // 拖动/拉伸刚结束时浏览器可能补一个 click 到遮罩上，忽略掉防止误关
+        if (_cvSuppressOverlayClick) return;
+        closePanel();
+    });
     document.body.appendChild(panelEl);
 
+    // 桌面窗口模式：装把手、还原位置、绑定拖拽/拉伸（手机端内部直接 return）
+    const _panel = document.getElementById('chatvault_panel');
+    applyWindowState(panelEl, _panel);
+    initWindowChrome(panelEl, _panel);
+
     document.getElementById('cv_close').onclick = closePanel;
+    document.getElementById('cv_reset').onclick = (e) => { e.stopPropagation(); resetWindow(); };
     document.getElementById('cv_refresh').onclick = (e) => {
         e.stopPropagation();
         const btn = e.currentTarget;
@@ -2288,6 +2304,225 @@ function applyEnabledState() {
  *  自定义字体（注入 <style>，全局作用于 ChatVault 面板）
  * ============================================================ */
 
+/* ============================================================
+ *  桌面窗口模式（v0.3.27 起）
+ *  - 默认仍是模态居中卡片
+ *  - 桌面端额外允许：拖标题栏移动 / 拉边缘改大小 / 双击最大化 / 复位
+ *  - 自由模式：去掉遮罩，可同时操作酒馆
+ *  - 手机端（≤720px）完全跳过，保留原有满屏体验
+ * ============================================================ */
+
+let _cvSuppressOverlayClick = false;
+
+function isMobileLayout() {
+    return !!(window.matchMedia && window.matchMedia('(max-width: 720px)').matches);
+}
+
+function clampRect(rect) {
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const minW = 400, minH = 500;
+    let { x, y, w, h } = rect;
+    w = Math.max(minW, Math.min(w, vw));
+    h = Math.max(minH, Math.min(h, vh));
+    x = Math.max(0, Math.min(x, vw - w));
+    y = Math.max(0, Math.min(y, vh - h));
+    return { x, y, w, h };
+}
+
+function getPanelRect(panel) {
+    const r = panel.getBoundingClientRect();
+    return { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) };
+}
+
+function commitPanelRect(panel, rect) {
+    const r = clampRect(rect);
+    panel.style.left   = r.x + 'px';
+    panel.style.top    = r.y + 'px';
+    panel.style.width  = r.w + 'px';
+    panel.style.height = r.h + 'px';
+    return r;
+}
+
+function saveWindowStatePartial(patch) {
+    const s = loadSettings();
+    saveSettings({ ...s, windowState: { ...(s.windowState || {}), ...patch } });
+}
+
+function applyWindowState(overlay, panel) {
+    if (isMobileLayout()) return;
+    const s = loadSettings();
+    if (s.windowFreeMode) overlay.classList.add('cv-window-free');
+    const st = s.windowState;
+    if (st && typeof st.x === 'number' && typeof st.y === 'number'
+           && typeof st.w === 'number' && typeof st.h === 'number') {
+        overlay.classList.add('cv-window-positioned');
+        commitPanelRect(panel, st);
+    }
+    if (st && st.maximized) panel.classList.add('cv-maximized');
+}
+
+function _ensurePositioned(overlay, panel) {
+    if (overlay.classList.contains('cv-window-positioned')) return;
+    overlay.classList.add('cv-window-positioned');
+    commitPanelRect(panel, getPanelRect(panel));
+}
+
+function _onPointerEnd(panel, cleanup) {
+    cleanup();
+    saveWindowStatePartial(getPanelRect(panel));
+    // 防止 pointerup 之后浏览器补发的 click 触发遮罩关闭
+    _cvSuppressOverlayClick = true;
+    setTimeout(() => { _cvSuppressOverlayClick = false; }, 50);
+}
+
+function _bindDrag(panel, overlay, handle) {
+    handle.addEventListener('pointerdown', (e) => {
+        if (panel.classList.contains('cv-maximized')) return;
+        if (e.target.closest('input, button, select, textarea, a')) return;
+        if (e.button !== 0) return;
+        e.preventDefault();
+        _ensurePositioned(overlay, panel);
+        const startX = e.clientX, startY = e.clientY;
+        const startRect = getPanelRect(panel);
+        const move = (ev) => {
+            commitPanelRect(panel, {
+                x: startRect.x + (ev.clientX - startX),
+                y: startRect.y + (ev.clientY - startY),
+                w: startRect.w, h: startRect.h,
+            });
+        };
+        const up = () => _onPointerEnd(panel, () => {
+            window.removeEventListener('pointermove', move);
+            window.removeEventListener('pointerup', up);
+        });
+        window.addEventListener('pointermove', move);
+        window.addEventListener('pointerup', up);
+    });
+}
+
+function _bindResize(panel, overlay, handle) {
+    handle.addEventListener('pointerdown', (e) => {
+        if (panel.classList.contains('cv-maximized')) return;
+        if (e.button !== 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const dir = handle.dataset.dir;
+        _ensurePositioned(overlay, panel);
+        const startX = e.clientX, startY = e.clientY;
+        const startRect = getPanelRect(panel);
+        const move = (ev) => {
+            const dx = ev.clientX - startX, dy = ev.clientY - startY;
+            let { x, y, w, h } = startRect;
+            if (dir.includes('e')) w = startRect.w + dx;
+            if (dir.includes('s')) h = startRect.h + dy;
+            if (dir.includes('w')) { x = startRect.x + dx; w = startRect.w - dx; }
+            if (dir.includes('n')) { y = startRect.y + dy; h = startRect.h - dy; }
+            commitPanelRect(panel, { x, y, w, h });
+        };
+        const up = () => _onPointerEnd(panel, () => {
+            window.removeEventListener('pointermove', move);
+            window.removeEventListener('pointerup', up);
+        });
+        window.addEventListener('pointermove', move);
+        window.addEventListener('pointerup', up);
+    });
+}
+
+function initWindowChrome(overlay, panel) {
+    if (isMobileLayout()) return;
+
+    // 8 个 resize handle
+    ['n','s','w','e','nw','ne','sw','se'].forEach(d => {
+        const h = document.createElement('div');
+        h.className = `cv-resize-handle cv-rh-${d}`;
+        h.dataset.dir = d;
+        panel.appendChild(h);
+        _bindResize(panel, overlay, h);
+    });
+
+    // 阅读模式下顶部一条窄拖动条（普通模式靠 header）
+    const dragStrip = document.createElement('div');
+    dragStrip.className = 'cv-drag-strip';
+    panel.appendChild(dragStrip);
+    _bindDrag(panel, overlay, dragStrip);
+
+    // 标题栏拖动 + 双击最大化
+    const header = panel.querySelector('.cv-header');
+    if (header) {
+        _bindDrag(panel, overlay, header);
+        header.addEventListener('dblclick', (e) => {
+            if (e.target.closest('input, button, select, textarea, a')) return;
+            toggleMaximize(panel);
+        });
+    }
+
+    // 视口尺寸变化：把窗口夹回可见范围
+    const onWinResize = () => {
+        if (isMobileLayout()) return;
+        if (panel.classList.contains('cv-maximized')) return;
+        if (!overlay.classList.contains('cv-window-positioned')) return;
+        commitPanelRect(panel, getPanelRect(panel));
+    };
+    window.addEventListener('resize', onWinResize);
+}
+
+function toggleMaximize(panel) {
+    const isMax = panel.classList.toggle('cv-maximized');
+    saveWindowStatePartial({ maximized: isMax });
+}
+
+function resetWindow() {
+    if (!panelEl) return;
+    const s = loadSettings();
+    delete s.windowState;
+    saveSettings(s);
+    const panel = document.getElementById('chatvault_panel');
+    if (!panel) return;
+    panel.classList.remove('cv-maximized');
+    panelEl.classList.remove('cv-window-positioned');
+    panel.style.left = panel.style.top = panel.style.width = panel.style.height = '';
+}
+
+function parseHotkeyCombo(str) {
+    if (!str) return null;
+    const parts = String(str).split('+').map(s => s.trim()).filter(Boolean);
+    if (!parts.length) return null;
+    const key = parts.pop().toLowerCase();
+    const mods = new Set(parts.map(s => s.toLowerCase()));
+    return { key, ctrl: mods.has('ctrl'), alt: mods.has('alt'),
+             shift: mods.has('shift'), meta: mods.has('meta') || mods.has('cmd') };
+}
+
+function matchHotkey(e, combo) {
+    if (!combo) return false;
+    const k = (e.key || '').toLowerCase();
+    return k === combo.key
+        && !!e.ctrlKey  === combo.ctrl
+        && !!e.altKey   === combo.alt
+        && !!e.shiftKey === combo.shift
+        && !!e.metaKey  === combo.meta;
+}
+
+function setupHotkey() {
+    if (window._cvHotkeyBound) return;
+    window._cvHotkeyBound = true;
+    document.addEventListener('keydown', (e) => {
+        const s = loadSettings();
+        if (!s.windowHotkey) return;
+        const combo = parseHotkeyCombo(s.windowHotkeyCombo || 'Alt+V');
+        if (!matchHotkey(e, combo)) return;
+        const t = e.target;
+        const tag = (t?.tagName || '').toLowerCase();
+        if (tag === 'input' || tag === 'textarea' || t?.isContentEditable) return;
+        e.preventDefault();
+        if (panelEl) closePanel(); else openPanel();
+    });
+}
+
+/* ============================================================
+ *  自定义字体
+ * ============================================================ */
+
 function applyCustomFont() {
     const s = loadSettings();
     let style = document.getElementById('cv-custom-font-style');
@@ -2364,6 +2599,28 @@ function injectSettings() {
             💡 字体名 = 系统/酒馆里已有的字体名（用作回退）。填了 URL 才会真正下载字体；URL 字体只在 ChatVault 内生效，不影响酒馆其它界面。<br>
             ⚠️ URL 字体由你的浏览器直接请求该地址，请确认来源可信。ChatVault 不会缓存或上传任何数据。
           </div>
+          <hr style="border:none; border-top:1px solid var(--cv-border, rgba(127,127,127,0.25)); margin:10px 0;">
+          <div class="cv-settings-row">
+            <label class="checkbox_label" for="cv_set_window_free">
+              <input type="checkbox" id="cv_set_window_free" ${s.windowFreeMode ? 'checked' : ''}>
+              <span>桌面自由窗口模式（去掉背景遮罩，可同时操作酒馆）</span>
+            </label>
+          </div>
+          <div class="cv-settings-row">
+            <label class="checkbox_label" for="cv_set_hotkey">
+              <input type="checkbox" id="cv_set_hotkey" ${s.windowHotkey ? 'checked' : ''}>
+              <span>启用全局快捷键开关面板</span>
+            </label>
+          </div>
+          <div class="cv-settings-row">
+            <label for="cv_set_hotkey_combo">快捷键组合：</label>
+            <input type="text" id="cv_set_hotkey_combo" class="text_pole" value="${escapeHtml(s.windowHotkeyCombo || 'Alt+V')}" placeholder="例：Alt+V / Ctrl+Shift+K">
+          </div>
+          <div class="cv-settings-hint">
+            🖥️ 桌面端：拖动标题栏移动窗口；拉边缘/角落改大小；双击标题栏最大化；标题栏「⟲」按钮可复位窗口。状态自动记忆。<br>
+            📱 手机端不受影响，仍是满屏。<br>
+            ⚠️ 自定义快捷键时请避开酒馆/浏览器已用组合（如 Ctrl+S、F5），否则会冲突。在输入框/聊天框里时快捷键不会触发。
+          </div>
           <div class="cv-settings-hint">
             v${VERSION} · 设置实时生效，主题切换会立即应用到已打开的面板。
           </div>
@@ -2397,10 +2654,31 @@ function injectSettings() {
     };
     wrap.querySelector('#cv_set_font_family').addEventListener('input', onFontChange);
     wrap.querySelector('#cv_set_font_url').addEventListener('input', onFontChange);
+
+    // 桌面窗口设置
+    wrap.querySelector('#cv_set_window_free').addEventListener('change', (e) => {
+        const cur = loadSettings();
+        const on = !!e.target.checked;
+        saveSettings({ ...cur, windowFreeMode: on });
+        if (panelEl) panelEl.classList.toggle('cv-window-free', on);
+    });
+    wrap.querySelector('#cv_set_hotkey').addEventListener('change', (e) => {
+        const cur = loadSettings();
+        saveSettings({ ...cur, windowHotkey: !!e.target.checked });
+    });
+    let _hkDebounce;
+    wrap.querySelector('#cv_set_hotkey_combo').addEventListener('input', (e) => {
+        clearTimeout(_hkDebounce);
+        _hkDebounce = setTimeout(() => {
+            const cur = loadSettings();
+            saveSettings({ ...cur, windowHotkeyCombo: (e.target.value || '').trim() || 'Alt+V' });
+        }, 300);
+    });
 }
 
 jQuery(async () => {
     applyCustomFont();
+    setupHotkey();
     const tryInject = () => {
         if (document.getElementById('extensionsMenu')) applyEnabledState();
         if (document.getElementById('extensions_settings2')
