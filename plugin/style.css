@@ -2085,3 +2085,24 @@
     background: var(--cv-danger-bg);
 }
 .cv-bm-del svg { width: 14px; height: 14px; }
+
+
+/* v0.4.8 滑块小标题 + 紧凑行 */
+.cv-slider-label {
+    font-size: 12px;
+    color: var(--cv-text-secondary);
+    margin: 6px 0 2px;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+.cv-slider-label:first-child { margin-top: 0; }
+.cv-slider-label-sub {
+    font-size: 11px;
+    color: var(--cv-text-tertiary);
+    font-weight: normal;
+}
+.cv-slider-label + .cv-reader-fontsize-row {
+    padding: 0 0 4px;
+    margin-top: 0;
+}
