@@ -4,7 +4,7 @@
  * https://github.com/shanye5593/SillyTavern-ChatVault
  */
 
-const VERSION = '0.3.32-test';
+const VERSION = '0.3.33-test';
 const STORAGE_KEY = 'st-chatvault-meta';
 const SETTINGS_KEY = 'st-chatvault-settings';
 const PAGE_SIZE = 50;
@@ -12,6 +12,7 @@ const THEMES = [
     { id: 'dark',   name: '夜间 Dark' },
     { id: 'light',  name: '白底 Light' },
     { id: 'coffee', name: '咖啡 Coffee' },
+    { id: 'custom', name: '🎨 自定义（使用下方配色面板）' },
 ];
 const DEFAULT_STRIP = {
     thinking: true,
@@ -2608,6 +2609,8 @@ function applyCustomColors() {
         style.id = 'cv-custom-colors-style';
         document.head.appendChild(style);
     }
+    // 仅当主题 = 自定义 时才注入覆盖；切回内置主题立刻清空，主题原色 100% 还原
+    if (s.theme !== 'custom') { style.textContent = ''; return; }
     const c = s.customColors || {};
     const isHex = (v) => /^#[0-9a-fA-F]{6}$/.test(String(v || '').trim());
     const accent  = isHex(c.accent)  ? c.accent.trim()  : '';
@@ -2689,20 +2692,20 @@ function injectSettings() {
             </div>
           </div>
 
-          <!-- 自定义配色（折叠） -->
-          <div class="inline-drawer cv-sub-drawer">
+          <!-- 自定义配色（折叠；仅当配色方案 = 自定义 时显示） -->
+          <div id="cv_color_drawer_wrap" class="inline-drawer cv-sub-drawer" style="display:${s.theme === 'custom' ? 'block' : 'none'};">
             <div class="inline-drawer-toggle inline-drawer-header">
-              <b>🎨 自定义配色（覆盖当前主题）</b>
+              <b>🎨 自定义配色面板</b>
               <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
             </div>
             <div class="inline-drawer-content">
               <div class="cv-settings-hint" style="margin-bottom:8px;">
-                💡 任何一项填了都只覆盖那一项，其它仍跟随上面选的「配色方案」。<br>
-                切换主题不会清空自定义颜色；按 × 清除该项即回退到主题色。
+                💡 只在「配色方案 = 🎨 自定义」时生效；切回其它方案会自动恢复主题原色（自定义参数仍保留，下次切回来还在）。<br>
+                每项独立可调，未调的字段使用暗色基准；按 × 清除该项即回退到基准色。
               </div>
               <div id="cv_color_grid" class="cv-color-grid"></div>
               <div class="cv-settings-row" style="margin-top:8px;">
-                <button id="cv_color_reset_all" class="menu_button cv-inline-btn">⟲ 全部恢复主题默认</button>
+                <button id="cv_color_reset_all" class="menu_button cv-inline-btn">⟲ 全部恢复基准</button>
               </div>
             </div>
           </div>
@@ -2755,8 +2758,13 @@ function injectSettings() {
     });
     wrap.querySelector('#cv_set_theme').addEventListener('change', (e) => {
         const cur = loadSettings();
-        saveSettings({ ...cur, theme: e.target.value });
+        const newTheme = e.target.value;
+        saveSettings({ ...cur, theme: newTheme });
         if (panelEl) panelEl.className = currentThemeClass();
+        applyCustomColors();
+        // 显隐自定义配色面板
+        const cdw = wrap.querySelector('#cv_color_drawer_wrap');
+        if (cdw) cdw.style.display = (newTheme === 'custom') ? 'block' : 'none';
     });
 
     // ----- 多字体管理 -----

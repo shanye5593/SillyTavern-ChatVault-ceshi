@@ -1806,3 +1806,26 @@
     opacity: 0.25;
     cursor: not-allowed;
 }
+
+/* ---------- 主题：自定义（基准 = 暗色；用户的 customColors 通过更高特异性覆盖） ---------- */
+.cv-theme-custom {
+    --cv-bg-overlay: rgba(0, 0, 0, 0.55);
+    --cv-bg-panel: #212327;
+    --cv-bg-card: #2a2d32;
+    --cv-bg-card-hover: #32353a;
+    --cv-bg-input: #18191c;
+    --cv-text-primary: #e4e5e7;
+    --cv-text-secondary: #9aa0a6;
+    --cv-text-tertiary: #6b7280;
+    --cv-border: #3c4046;
+    --cv-border-soft: rgba(255, 255, 255, 0.06);
+    --cv-accent: #34d399;
+    --cv-accent-muted: rgba(52, 211, 153, 0.15);
+    --cv-star: #fbbf24;
+    --cv-tag-bg: #374151;
+    --cv-tag-text: #d1d5db;
+    --cv-danger: #f87171;
+    --cv-danger-bg: rgba(248, 113, 113, 0.12);
+    --cv-radius-panel: 12px;
+    --cv-radius-card: 8px;
+}
