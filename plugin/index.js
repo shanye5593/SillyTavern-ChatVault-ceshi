@@ -4,7 +4,7 @@
  * https://github.com/shanye5593/SillyTavern-ChatVault
  */
 
-const VERSION = '0.3.36-test';
+const VERSION = '0.3.37-test';
 const STORAGE_KEY = 'st-chatvault-meta';
 const SETTINGS_KEY = 'st-chatvault-settings';
 const PAGE_SIZE = 50;
@@ -1291,7 +1291,7 @@ function readerCfg() {
             extract: { ...DEFAULT_EXTRACT, ...(u.extract || {}) },
         },
         pagerMode: cfg.readerPagerMode === 'always' ? 'always' : 'autoHide',
-        fontSize: (Number.isFinite(fs) && fs >= 12 && fs <= 24) ? fs : 15,
+        fontSize: (Number.isFinite(fs) && fs >= 12 && fs <= 28) ? fs : 15,
         headScale: (Number.isFinite(hs) && hs >= 0.8 && hs <= 1.8) ? hs : 1.0,
         indent: !!cfg.readerIndent,
     };
@@ -1786,7 +1786,7 @@ function renderReaderSettings(panel) {
             <div class="cv-strip-box">
                 <div class="cv-strip-title">正文字号</div>
                 <div class="cv-reader-fontsize-row">
-                    <input type="range" id="cv_r_fontsize" min="13" max="22" step="0.5" value="${cfg.readerFontSize || 15}"/>
+                    <input type="range" id="cv_r_fontsize" min="13" max="28" step="0.5" value="${cfg.readerFontSize || 15}"/>
                     <span class="cv-reader-fontsize-val" id="cv_r_fontsize_val">${cfg.readerFontSize || 15}px</span>
                 </div>
                 ${sw('cv_r_indent', !!cfg.readerIndent, '段落首行缩进 2 字')}
