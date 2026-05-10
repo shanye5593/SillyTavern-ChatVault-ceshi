@@ -4,7 +4,7 @@
  * https://github.com/shanye5593/SillyTavern-ChatVault
  */
 
-const VERSION = '0.3.28-test';
+const VERSION = '0.3.29-test';
 const STORAGE_KEY = 'st-chatvault-meta';
 const SETTINGS_KEY = 'st-chatvault-settings';
 const PAGE_SIZE = 50;
@@ -2336,10 +2336,11 @@ function getPanelRect(panel) {
 
 function commitPanelRect(panel, rect) {
     const r = clampRect(rect);
-    panel.style.left   = r.x + 'px';
-    panel.style.top    = r.y + 'px';
-    panel.style.width  = r.w + 'px';
-    panel.style.height = r.h + 'px';
+    // 用 setProperty + 'important' 才能盖过原 CSS 里 width/height 的 !important
+    panel.style.setProperty('left',   r.x + 'px', 'important');
+    panel.style.setProperty('top',    r.y + 'px', 'important');
+    panel.style.setProperty('width',  r.w + 'px', 'important');
+    panel.style.setProperty('height', r.h + 'px', 'important');
     return r;
 }
 
@@ -2480,7 +2481,10 @@ function resetWindow() {
     if (!panel) return;
     panel.classList.remove('cv-maximized');
     panelEl.classList.remove('cv-window-positioned');
-    panel.style.left = panel.style.top = panel.style.width = panel.style.height = '';
+    panel.style.removeProperty('left');
+    panel.style.removeProperty('top');
+    panel.style.removeProperty('width');
+    panel.style.removeProperty('height');
 }
 
 function parseHotkeyCombo(str) {
