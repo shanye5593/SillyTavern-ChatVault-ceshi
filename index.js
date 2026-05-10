@@ -4,7 +4,7 @@
  * https://github.com/shanye5593/SillyTavern-ChatVault
  */
 
-const VERSION = '0.3.25-test';
+const VERSION = '0.3.26-test';
 const STORAGE_KEY = 'st-chatvault-meta';
 const SETTINGS_KEY = 'st-chatvault-settings';
 const PAGE_SIZE = 50;
@@ -2299,17 +2299,23 @@ function applyCustomFont() {
     const family = String(s.customFontFamily || '').trim();
     const url = String(s.customFontUrl || '').trim();
     if (!family && !url) { style.textContent = ''; return; }
-    // 仅填 URL 没填字体名时，自动用 CVCustomFont 命名
-    let usedFamily = family || 'CVCustomFont';
-    // 简单消毒：去掉可能用来注入额外 CSS 规则的字符
-    const safeFamily = usedFamily.replace(/['"\\;{}<>]/g, '').trim() || 'CVCustomFont';
+    // 消毒：去掉可能用来注入额外 CSS 规则的字符
+    const safeFamily = family.replace(/['"\\;{}<>]/g, '').trim();
     const safeUrl = url.replace(/['"\\;<>]/g, '').trim();
+    // 关键：URL 字体永远用内部固定名字注册 @font-face，避免污染酒馆全局
+    // （否则像 'Inter' 这种常见名一旦被 @font-face 重新声明，酒馆所有用到 Inter 的地方都会跟着变）
+    const INTERNAL = '__cv_user_font__';
+    const stack = [];
+    if (safeUrl) stack.push(`'${INTERNAL}'`);
+    if (safeFamily) stack.push(`'${safeFamily}'`);
+    stack.push('system-ui', '-apple-system', '"Segoe UI"', '"PingFang SC"',
+               '"Hiragino Sans GB"', '"Microsoft YaHei"', 'sans-serif');
     let css = '';
     if (safeUrl) {
-        css += `@font-face { font-family: '${safeFamily}'; src: url('${safeUrl}'); font-display: swap; }\n`;
+        css += `@font-face { font-family: '${INTERNAL}'; src: url('${safeUrl}'); font-display: swap; }\n`;
     }
     // 只在面板根上覆盖 font-family，靠 CSS 继承生效；不动 monospace 等显式声明
-    css += `#chatvault_panel { font-family: '${safeFamily}', system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; }`;
+    css += `#chatvault_panel { font-family: ${stack.join(', ')}; }`;
     style.textContent = css;
 }
 
@@ -2355,7 +2361,7 @@ function injectSettings() {
             <input type="text" id="cv_set_font_url" class="text_pole" placeholder="https://.../font.woff2  仅当系统/酒馆未加载该字体时填写" value="${escapeHtml(s.customFontUrl || '')}">
           </div>
           <div class="cv-settings-hint">
-            💡 字体名 = 系统已装字体或下方 URL 加载字体的 font-family 名称。仅填 URL 会自动命名为 "CVCustomFont"。<br>
+            💡 字体名 = 系统/酒馆里已有的字体名（用作回退）。填了 URL 才会真正下载字体；URL 字体只在 ChatVault 内生效，不影响酒馆其它界面。<br>
             ⚠️ URL 字体由你的浏览器直接请求该地址，请确认来源可信。ChatVault 不会缓存或上传任何数据。
           </div>
           <div class="cv-settings-hint">
