@@ -2901,7 +2901,7 @@ function openRulesManager(avatar, characterName) {
             </div>
         </div>
     `;
-    document.body.appendChild(wrap);
+    (document.getElementById('chatvault_panel') || document.body).appendChild(wrap);
 
     function renderList() {
         const all = loadRules();
