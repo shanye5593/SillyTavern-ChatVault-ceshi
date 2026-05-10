@@ -4,7 +4,7 @@
  * https://github.com/shanye5593/SillyTavern-ChatVault
  */
 
-const VERSION = '0.4.2-test';
+const VERSION = '0.4.3-test';
 const STORAGE_KEY = 'st-chatvault-meta';
 const SETTINGS_KEY = 'st-chatvault-settings';
 const PAGE_SIZE = 50;
@@ -1476,12 +1476,13 @@ function renderReader() {
                 : `<div class="cv-reader-msg-avatar">${escapeHtml((m.who||'C').slice(0,1))}</div>`);
         const _bmHit = (readerState.character && readerState.fileName)
             ? !!findBookmark(readerState.character.avatar, readerState.fileName, m.idx) : false;
+        const _floorTitle = _bmHit ? '已有书签 · 点击编辑 / 删除' : '点击添加书签';
         return `
             <div class="cv-reader-msg ${m.is_user ? 'is-user' : 'is-char'}${_bmHit ? ' has-bookmark' : ''}" data-mes-idx="${m.idx}">
                 <div class="cv-reader-msg-head">
                     ${avHtml}
                     <span class="cv-reader-msg-who">${who}</span>
-                    <span class="cv-reader-msg-floor">#${m.idx}</span>
+                    <button type="button" class="cv-reader-msg-floor${_bmHit ? ' is-bm' : ''}" data-mes-idx="${m.idx}" title="${_floorTitle}">${_bmHit ? '🔖 ' : '#'}${m.idx}</button>
                 </div>
                 <div class="cv-reader-msg-body">${text}</div>
             </div>
@@ -1601,45 +1602,36 @@ function bindReaderPager(totalPages) {
     if (inp) inp.onkeydown = (e) => { if (e.key === 'Enter') goTo(inp.value); };
 }
 
-/* —— v0.4.2 书签：右键 / 长按消息呼出菜单 —— */
+/* —— v0.4.3 书签入口：点击楼层号弹菜单（移动 / 桌面统一）+ 桌面右键作辅助 —— */
 function bindReaderMsgMenu() {
     const list = document.querySelector('.cv-reader-list');
     if (!list) return;
+    // 楼层号按钮：每条消息都有，移动桌面通用
+    list.querySelectorAll('.cv-reader-msg-floor').forEach(btn => {
+        btn.onclick = (e) => {
+            e.stopPropagation();
+            const msg = btn.closest('.cv-reader-msg');
+            if (!msg) return;
+            const rect = btn.getBoundingClientRect();
+            // 菜单出现在按钮正下方 / 上方，由 openMsgMenu 自适应
+            openMsgMenu(msg, rect.left, rect.bottom + 4);
+        };
+    });
+    // 桌面右键作快捷入口（在消息任意位置）
     list.oncontextmenu = (e) => {
         const msg = e.target.closest('.cv-reader-msg');
         if (!msg) return;
         e.preventDefault();
         openMsgMenu(msg, e.clientX, e.clientY);
     };
-    list.querySelectorAll('.cv-reader-msg').forEach(msg => {
-        let timer = null, sx = 0, sy = 0, fired = false;
-        const cancel = () => { if (timer) { clearTimeout(timer); timer = null; } };
-        msg.addEventListener('touchstart', (e) => {
-            if (e.touches.length !== 1) { cancel(); return; }
-            const t = e.touches[0]; sx = t.clientX; sy = t.clientY; fired = false;
-            cancel();
-            timer = setTimeout(() => {
-                timer = null; fired = true;
-                try { navigator.vibrate && navigator.vibrate(20); } catch {}
-                openMsgMenu(msg, t.clientX, t.clientY);
-            }, 480);
-        }, { passive: true });
-        msg.addEventListener('touchmove', (e) => {
-            const t = e.touches[0];
-            if (!t) return;
-            if (Math.abs(t.clientX - sx) > 8 || Math.abs(t.clientY - sy) > 8) cancel();
-        }, { passive: true });
-        msg.addEventListener('touchend', (e) => {
-            cancel();
-            if (fired) { e.preventDefault && e.preventDefault(); }
-        });
-        msg.addEventListener('touchcancel', cancel);
-    });
 }
 
 function closeMsgMenu() {
     const m = document.getElementById('cv_msg_menu');
-    if (m) m.remove();
+    if (m) {
+        try { m._cleanup && m._cleanup(); } catch {}
+        m.remove();
+    }
 }
 
 function openMsgMenu(msgEl, x, y) {
@@ -1659,7 +1651,12 @@ function openMsgMenu(msgEl, x, y) {
     const vw = window.innerWidth, vh = window.innerHeight;
     let left = x, top = y;
     if (left + rect.width > vw - 8) left = Math.max(8, vw - rect.width - 8);
-    if (top + rect.height > vh - 8) top = Math.max(8, vh - rect.height - 8);
+    // 优先放在下方；下方放不下且上方更宽敞时放上方
+    if (top + rect.height > vh - 8) {
+        const above = y - rect.height - 8;
+        if (above >= 8) top = above;
+        else top = Math.max(8, vh - rect.height - 8);
+    }
     menu.style.left = left + 'px';
     menu.style.top = top + 'px';
     menu.querySelectorAll('button').forEach(b => {
@@ -1675,12 +1672,25 @@ function openMsgMenu(msgEl, x, y) {
             }
         };
     });
+    // dismiss：只在点击菜单外部时关，避免点击菜单内部按钮被吞
+    const onDocDown = (ev) => {
+        if (menu.contains(ev.target)) return;
+        closeMsgMenu();
+        document.removeEventListener('mousedown', onDocDown, true);
+        document.removeEventListener('touchstart', onDocDown, true);
+        document.removeEventListener('contextmenu', onDocDown, true);
+    };
     setTimeout(() => {
-        const dismiss = () => closeMsgMenu();
-        document.addEventListener('click', dismiss, { once: true, capture: true });
-        document.addEventListener('contextmenu', dismiss, { once: true, capture: true });
-        document.addEventListener('touchstart', dismiss, { once: true, capture: true });
+        document.addEventListener('mousedown', onDocDown, true);
+        document.addEventListener('touchstart', onDocDown, true);
+        document.addEventListener('contextmenu', onDocDown, true);
     }, 0);
+    // closeMsgMenu 同时清理监听
+    menu._cleanup = () => {
+        document.removeEventListener('mousedown', onDocDown, true);
+        document.removeEventListener('touchstart', onDocDown, true);
+        document.removeEventListener('contextmenu', onDocDown, true);
+    };
 }
 
 function openBookmarkModal(idx, existing) {
@@ -2115,12 +2125,12 @@ function renderReaderSettings(panel) {
                     <div class="cv-field-hint" style="margin-top:6px">当前已绑定：${boundUA ? `<code>${escapeHtml(boundUA)}</code>` : '（无）'}</div>
                 `}
             </div>
-            <div class="cv-strip-box cv-bm-box" data-collapsed="1">
+            <div class="cv-strip-box cv-bm-box" data-collapsed="${ (rChar.avatar && rFile && getBookmarks(rChar.avatar, rFile).length) ? '0' : '1' }">
                 <div class="cv-strip-title cv-bm-toggle" id="cv_r_bm_toggle">
                     <span>📖 书签 (${ (rChar.avatar && rFile) ? getBookmarks(rChar.avatar, rFile).length : 0 })</span>
                     <span class="cv-bm-chev">▾</span>
                 </div>
-                <div class="cv-bm-body" id="cv_r_bm_body" hidden>
+                <div class="cv-bm-body" id="cv_r_bm_body" ${ (rChar.avatar && rFile && getBookmarks(rChar.avatar, rFile).length) ? '' : 'hidden' }>
                     ${ (() => {
                         const _list = (rChar.avatar && rFile) ? getBookmarks(rChar.avatar, rFile) : [];
                         if (!_list.length) return '<div class="cv-field-hint">还没有书签。阅读时桌面端右键 / 移动端长按消息即可添加。</div>';
