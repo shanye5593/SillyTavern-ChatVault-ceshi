@@ -1829,3 +1829,25 @@
     --cv-radius-panel: 12px;
     --cv-radius-card: 8px;
 }
+
+/* hex 文本框 */
+.cv-color-row .cv-cc-hex {
+    width: 84px;
+    flex-shrink: 0;
+    padding: 4px 6px;
+    border: 1px solid rgba(127, 127, 127, 0.3);
+    border-radius: 4px;
+    background: rgba(127, 127, 127, 0.06);
+    color: inherit;
+    font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    font-size: 12px;
+    text-transform: lowercase;
+}
+.cv-color-row .cv-cc-hex:focus {
+    outline: none;
+    border-color: var(--cv-accent, #34d399);
+}
+.cv-color-row .cv-cc-hex.cv-cc-hex-bad {
+    border-color: #d66;
+    background: rgba(214, 102, 102, 0.08);
+}

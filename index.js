@@ -4,7 +4,7 @@
  * https://github.com/shanye5593/SillyTavern-ChatVault
  */
 
-const VERSION = '0.3.33-test';
+const VERSION = '0.3.34-test';
 const STORAGE_KEY = 'st-chatvault-meta';
 const SETTINGS_KEY = 'st-chatvault-settings';
 const PAGE_SIZE = 50;
@@ -2624,7 +2624,14 @@ function applyCustomColors() {
         rules.push(`--cv-accent: ${accent};`);
         rules.push(`--cv-accent-muted: color-mix(in srgb, ${accent} 15%, transparent);`);
     }
-    if (bgPanel) rules.push(`--cv-bg-panel: ${bgPanel};`);
+    if (bgPanel) {
+        rules.push(`--cv-bg-panel: ${bgPanel};`);
+        // 派生边框 / 输入框背景，避免 light 自定义出现"黑边"或"暗色搜索框"
+        // 用文字色按 20%/8% 混入，自动适配深浅
+        rules.push(`--cv-border: color-mix(in srgb, ${bgPanel} 80%, var(--cv-text-primary, #888) 20%);`);
+        rules.push(`--cv-border-soft: color-mix(in srgb, ${bgPanel} 94%, var(--cv-text-primary, #888) 6%);`);
+        rules.push(`--cv-bg-input: color-mix(in srgb, ${bgPanel} 92%, var(--cv-text-primary, #888) 8%);`);
+    }
     if (bgCard) {
         rules.push(`--cv-bg-card: ${bgCard};`);
         rules.push(`--cv-bg-card-hover: color-mix(in srgb, ${bgCard} 88%, var(--cv-text-primary, #888) 12%);`);
@@ -2854,8 +2861,9 @@ function injectSettings() {
                   <div class="cv-color-row ${overriding ? 'cv-cc-on' : ''}" data-cc-key="${f.key}">
                     <span class="cv-cc-dot" title="${overriding ? '覆盖中' : '跟随主题'}"></span>
                     <label>${f.label}</label>
-                    <input type="color" data-cc-input="${f.key}" value="${val}">
-                    <button class="cv-cc-clear" data-cc-clear="${f.key}" title="清除（跟随主题）" ${overriding ? '' : 'disabled'}>×</button>
+                    <input type="color" class="cv-cc-color" data-cc-input="${f.key}" value="${val}">
+                    <input type="text" class="cv-cc-hex" data-cc-hex="${f.key}" value="${val}" maxlength="7" spellcheck="false" placeholder="#rrggbb">
+                    <button class="cv-cc-clear" data-cc-clear="${f.key}" title="清除（跟随基准）" ${overriding ? '' : 'disabled'}>×</button>
                   </div>
                 `;
             } else {
@@ -2865,7 +2873,7 @@ function injectSettings() {
                     <span class="cv-cc-dot" title="${overriding ? '覆盖中' : '跟随主题'}"></span>
                     <label>${f.label} <span class="cv-cc-pct" data-cc-pct="${f.key}">${pct}%</span></label>
                     <input type="range" min="0" max="100" data-cc-input="${f.key}" value="${pct}">
-                    <button class="cv-cc-clear" data-cc-clear="${f.key}" title="清除（跟随主题）" ${overriding ? '' : 'disabled'}>×</button>
+                    <button class="cv-cc-clear" data-cc-clear="${f.key}" title="清除（跟随基准）" ${overriding ? '' : 'disabled'}>×</button>
                   </div>
                 `;
             }
@@ -2896,15 +2904,39 @@ function injectSettings() {
             }
         }, 150);
     };
+    const HEX_RE = /^#[0-9a-fA-F]{6}$/;
     colorGrid.addEventListener('input', (e) => {
+        // 1) 取色器或 range
         const inp = e.target.closest('[data-cc-input]');
-        if (!inp) return;
-        const key = inp.dataset.ccInput;
-        if (key === 'overlayAlpha') {
-            const pctEl = colorGrid.querySelector(`[data-cc-pct="${key}"]`);
-            if (pctEl) pctEl.textContent = `${inp.value}%`;
+        if (inp) {
+            const key = inp.dataset.ccInput;
+            if (key === 'overlayAlpha') {
+                const pctEl = colorGrid.querySelector(`[data-cc-pct="${key}"]`);
+                if (pctEl) pctEl.textContent = `${inp.value}%`;
+            } else {
+                // 取色器变化时同步 hex 文本框
+                const hexEl = colorGrid.querySelector(`[data-cc-hex="${key}"]`);
+                if (hexEl) { hexEl.value = inp.value; hexEl.classList.remove('cv-cc-hex-bad'); }
+            }
+            saveColorDebounced(key, inp.value);
+            return;
         }
-        saveColorDebounced(key, inp.value);
+        // 2) hex 文本框
+        const hex = e.target.closest('[data-cc-hex]');
+        if (hex) {
+            let v = String(hex.value || '').trim();
+            // 自动补 # 前缀
+            if (v && v[0] !== '#') v = '#' + v;
+            const valid = HEX_RE.test(v);
+            hex.classList.toggle('cv-cc-hex-bad', !!v && !valid);
+            if (!valid) return;
+            hex.value = v.toLowerCase();
+            // 同步取色器
+            const key = hex.dataset.ccHex;
+            const colorEl = colorGrid.querySelector(`[data-cc-input="${key}"]`);
+            if (colorEl) colorEl.value = hex.value;
+            saveColorDebounced(key, hex.value);
+        }
     });
     colorGrid.addEventListener('click', (e) => {
         const btn = e.target.closest('[data-cc-clear]');
