@@ -1169,7 +1169,7 @@
 }
 .cv-reader-msg-head {
     display: flex; align-items: center; gap: 8px;
-    margin-bottom: 14px; font-size: 12px;
+    margin-bottom: var(--cv-reader-head-gap, 14px); font-size: 12px;
 }
 .cv-reader-msg-avatar {
     width: 24px; height: 24px; border-radius: 50%; object-fit: cover;
@@ -1184,7 +1184,7 @@
     line-height: 1.85;
     word-break: break-word; white-space: normal;
 }
-.cv-reader-msg-body .cv-msg-p { margin: 0 0 0.6em; }
+.cv-reader-msg-body .cv-msg-p { margin: 0 0 var(--cv-reader-para-gap, 0.6em); }
 .cv-reader-msg-body .cv-msg-p:last-child { margin-bottom: 0; }
 /* 段落首行缩进（仅当 stage[data-indent="1"]）；空段落不缩进 */
 .cv-reader-stage[data-indent="1"] .cv-reader-msg-body .cv-msg-p { text-indent: 2em; }
@@ -1884,7 +1884,7 @@
     align-items: center;
     justify-content: center;
     gap: calc(4px * var(--cv-reader-head-scale, 1));
-    margin-bottom: 16px;
+    margin-bottom: calc(var(--cv-reader-head-gap, 14px) + 2px);
 }
 .cv-reader-stage[data-layout="center"] .cv-reader-msg-floor {
     margin-left: 0;
