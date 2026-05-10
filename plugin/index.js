@@ -4,7 +4,7 @@
  * https://github.com/shanye5593/SillyTavern-ChatVault
  */
 
-const VERSION = '0.4.7-test';
+const VERSION = '0.4.8-test';
 const STORAGE_KEY = 'st-chatvault-meta';
 const SETTINGS_KEY = 'st-chatvault-settings';
 const PAGE_SIZE = 50;
@@ -2070,17 +2070,17 @@ function renderReaderSettings(panel) {
             </div>
             <div class="cv-strip-box">
                 <div class="cv-strip-title">正文字号 / 段落 / 头部间距</div>
-                <div class="cv-field-hint">字号</div>
+                <div class="cv-slider-label">字号</div>
                 <div class="cv-reader-fontsize-row">
                     <input type="range" id="cv_r_fontsize" min="13" max="28" step="0.5" value="${cfg.readerFontSize || 15}"/>
                     <span class="cv-reader-fontsize-val" id="cv_r_fontsize_val">${cfg.readerFontSize || 15}px</span>
                 </div>
-                <div class="cv-field-hint">段落之间间距（行与行之间的呼吸）</div>
+                <div class="cv-slider-label">段落之间间距 <span class="cv-slider-label-sub">行与行之间的呼吸</span></div>
                 <div class="cv-reader-fontsize-row">
                     <input type="range" id="cv_r_paragap" min="0.2" max="1.5" step="0.05" value="${(Number(cfg.readerParaGap) || 0.6).toFixed(2)}"/>
                     <span class="cv-reader-fontsize-val" id="cv_r_paragap_val">${(Number(cfg.readerParaGap) || 0.6).toFixed(2)}em</span>
                 </div>
-                <div class="cv-field-hint">头部到正文间距（角色名下方留白）</div>
+                <div class="cv-slider-label">头部到正文间距 <span class="cv-slider-label-sub">角色名下方留白</span></div>
                 <div class="cv-reader-fontsize-row">
                     <input type="range" id="cv_r_headgap" min="4" max="32" step="1" value="${Number(cfg.readerHeadGap) || 14}"/>
                     <span class="cv-reader-fontsize-val" id="cv_r_headgap_val">${Number(cfg.readerHeadGap) || 14}px</span>
