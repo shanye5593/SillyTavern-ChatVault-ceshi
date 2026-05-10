@@ -4,7 +4,7 @@
  * https://github.com/shanye5593/SillyTavern-ChatVault
  */
 
-const VERSION = '0.4.9-test';
+const VERSION = '0.4.10-test';
 const STORAGE_KEY = 'st-chatvault-meta';
 const SETTINGS_KEY = 'st-chatvault-settings';
 const PAGE_SIZE = 50;
@@ -694,6 +694,8 @@ function setStatus(text) {
 
 async function loadAll() {
     const loadToken = ++loadAllToken; // 防止重复打开造成的并发污染
+    // 主刷新时同时让预览缓存重新生成，避免「酒馆里改完档回来还看到旧首句」
+    previewCache.clear();
     setStatus('正在初始化…');
     document.getElementById('cv_body').innerHTML = '<div class="cv-loading">正在加载…</div>';
     try {
@@ -3422,8 +3424,9 @@ jQuery(async () => {
         if (document.getElementById('extensions_settings2')
          || document.getElementById('extensions_settings')) injectSettings();
 
-        if (!document.getElementById('chatvault_open_btn') && loadSettings().enabled
-         || !document.getElementById('chatvault_settings')) {
+        const needBtn = loadSettings().enabled && !document.getElementById('chatvault_open_btn');
+        const needSet = !document.getElementById('chatvault_settings');
+        if (needBtn || needSet) {
             setTimeout(tryInject, 500);
         }
     };
