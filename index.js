@@ -4,7 +4,7 @@
  * https://github.com/shanye5593/SillyTavern-ChatVault
  */
 
-const VERSION = '0.4.3-test';
+const VERSION = '0.4.4-test';
 const STORAGE_KEY = 'st-chatvault-meta';
 const SETTINGS_KEY = 'st-chatvault-settings';
 const PAGE_SIZE = 50;
@@ -540,7 +540,9 @@ const ICONS = {
     chevDown: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="6 9 12 15 18 9"/></svg>`,
     book: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>`,
     arrowL: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>`,
-    gear: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9 1.65 1.65 0 0 0 4.27 7.18l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09A1.65 1.65 0 0 0 15 4.6a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.14.34.22.7.22 1.06V11a2 2 0 0 1 0 4z"/></svg>`,
+    bookmark: `<svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>`,
+    bookmarkPlus: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/><line x1="12" y1="7" x2="12" y2="13"/><line x1="9" y1="10" x2="15" y2="10"/></svg>`,
+        gear: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9 1.65 1.65 0 0 0 4.27 7.18l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09A1.65 1.65 0 0 0 15 4.6a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.14.34.22.7.22 1.06V11a2 2 0 0 1 0 4z"/></svg>`,
     refresh: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/><path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14"/></svg>`,
 };
 
@@ -1482,7 +1484,7 @@ function renderReader() {
                 <div class="cv-reader-msg-head">
                     ${avHtml}
                     <span class="cv-reader-msg-who">${who}</span>
-                    <button type="button" class="cv-reader-msg-floor${_bmHit ? ' is-bm' : ''}" data-mes-idx="${m.idx}" title="${_floorTitle}">${_bmHit ? '🔖 ' : '#'}${m.idx}</button>
+                    <button type="button" class="cv-reader-msg-floor${_bmHit ? ' is-bm' : ''}" data-mes-idx="${m.idx}" title="${_floorTitle}">${_bmHit ? ICONS.bookmark : ''}<span class="cv-floor-num">${_bmHit ? '' : '#'}${m.idx}</span></button>
                 </div>
                 <div class="cv-reader-msg-body">${text}</div>
             </div>
@@ -1602,28 +1604,19 @@ function bindReaderPager(totalPages) {
     if (inp) inp.onkeydown = (e) => { if (e.key === 'Enter') goTo(inp.value); };
 }
 
-/* —— v0.4.3 书签入口：点击楼层号弹菜单（移动 / 桌面统一）+ 桌面右键作辅助 —— */
+/* —— v0.4.4 书签入口：唯一入口 = 点击楼层号；不再监听任何长按 / 右键 —— */
 function bindReaderMsgMenu() {
     const list = document.querySelector('.cv-reader-list');
     if (!list) return;
-    // 楼层号按钮：每条消息都有，移动桌面通用
     list.querySelectorAll('.cv-reader-msg-floor').forEach(btn => {
         btn.onclick = (e) => {
             e.stopPropagation();
             const msg = btn.closest('.cv-reader-msg');
             if (!msg) return;
             const rect = btn.getBoundingClientRect();
-            // 菜单出现在按钮正下方 / 上方，由 openMsgMenu 自适应
             openMsgMenu(msg, rect.left, rect.bottom + 4);
         };
     });
-    // 桌面右键作快捷入口（在消息任意位置）
-    list.oncontextmenu = (e) => {
-        const msg = e.target.closest('.cv-reader-msg');
-        if (!msg) return;
-        e.preventDefault();
-        openMsgMenu(msg, e.clientX, e.clientY);
-    };
 }
 
 function closeMsgMenu() {
@@ -1644,9 +1637,10 @@ function openMsgMenu(msgEl, x, y) {
     menu.className = 'cv-msg-menu';
     menu.id = 'cv_msg_menu';
     menu.innerHTML = exist
-        ? `<button data-act="edit" type="button">✏️ 编辑书签</button><button data-act="del" type="button">🗑 删除书签</button>`
-        : `<button data-act="add" type="button">📖 添加书签到 #${idx}</button>`;
-    document.body.appendChild(menu);
+        ? `<button data-act="edit" type="button">${ICONS.edit}<span>编辑书签</span></button><button data-act="del" type="button" class="cv-msg-menu-danger">${ICONS.trash}<span>删除书签</span></button>`
+        : `<button data-act="add" type="button">${ICONS.bookmarkPlus}<span>添加书签到 #${idx}</span></button>`;
+    // 挂在 chatvault_panel 内部，才能继承 .cv-theme-* 配色变量；落到 body 会变黑块
+    (document.getElementById('chatvault_panel') || document.body).appendChild(menu);
     const rect = menu.getBoundingClientRect();
     const vw = window.innerWidth, vh = window.innerHeight;
     let left = x, top = y;
@@ -1676,20 +1670,14 @@ function openMsgMenu(msgEl, x, y) {
     const onDocDown = (ev) => {
         if (menu.contains(ev.target)) return;
         closeMsgMenu();
-        document.removeEventListener('mousedown', onDocDown, true);
-        document.removeEventListener('touchstart', onDocDown, true);
-        document.removeEventListener('contextmenu', onDocDown, true);
     };
     setTimeout(() => {
         document.addEventListener('mousedown', onDocDown, true);
         document.addEventListener('touchstart', onDocDown, true);
-        document.addEventListener('contextmenu', onDocDown, true);
     }, 0);
-    // closeMsgMenu 同时清理监听
     menu._cleanup = () => {
         document.removeEventListener('mousedown', onDocDown, true);
         document.removeEventListener('touchstart', onDocDown, true);
-        document.removeEventListener('contextmenu', onDocDown, true);
     };
 }
 
@@ -1712,12 +1700,9 @@ function openBookmarkModal(idx, existing) {
             <h3>${existing ? '编辑书签' : '添加书签'} · #${idx}</h3>
             <div class="cv-modal-body">
                 <div class="cv-field">
-                    <label>预览</label>
-                    <div class="cv-bm-preview">${escapeHtml(snippet) || '（空）'}</div>
-                </div>
-                <div class="cv-field">
                     <label>备注（可选，最多 40 字）</label>
                     <input type="text" id="cv_bm_note" maxlength="40" placeholder="例如：两人第一次牵手" value="${escapeHtml(note)}"/>
+                    <div class="cv-field-hint">${existing ? `楼层 #${idx}` : `将为楼层 #${idx} 添加书签`}</div>
                 </div>
             </div>
             <div class="cv-modal-actions">
@@ -1769,13 +1754,7 @@ function jumpToBookmark(b) {
             if (b.idx + d < messages.length && fpAt(b.idx + d)) { found = b.idx + d; break; }
         }
     }
-    let drifted = false;
-    if (found < 0) {
-        drifted = true;
-        found = Math.min(messages.length - 1, Math.max(0, b.idx));
-    } else if (found !== b.idx) {
-        drifted = true;
-    }
+    if (found < 0) found = Math.min(messages.length - 1, Math.max(0, b.idx));
     const targetPage = Math.max(1, Math.ceil((found + 1) / READER_PAGE_SIZE));
     readerState.page = targetPage;
     readerState.settingsOpen = false;
@@ -1784,13 +1763,7 @@ function jumpToBookmark(b) {
         const stage = document.querySelector('.cv-reader-stage');
         const target = document.querySelector(`.cv-reader-msg[data-mes-idx="${found}"]`);
         if (stage && target) {
-            const top = Math.max(0, target.offsetTop - 16);
-            stage.scrollTop = top;
-            target.classList.add('cv-bookmark-flash');
-            setTimeout(() => target.classList.remove('cv-bookmark-flash'), 1600);
-        }
-        if (drifted) {
-            try { toastr.warning(`书签 #${b.idx} 可能已失效，已跳到接近的 #${found}`); } catch {}
+            stage.scrollTop = Math.max(0, target.offsetTop - 16);
         }
     });
 }
@@ -2127,7 +2100,7 @@ function renderReaderSettings(panel) {
             </div>
             <div class="cv-strip-box cv-bm-box" data-collapsed="${ (rChar.avatar && rFile && getBookmarks(rChar.avatar, rFile).length) ? '0' : '1' }">
                 <div class="cv-strip-title cv-bm-toggle" id="cv_r_bm_toggle">
-                    <span>📖 书签 (${ (rChar.avatar && rFile) ? getBookmarks(rChar.avatar, rFile).length : 0 })</span>
+                    <span class="cv-bm-title-label">${ICONS.bookmark}<span>书签 (${ (rChar.avatar && rFile) ? getBookmarks(rChar.avatar, rFile).length : 0 })</span></span>
                     <span class="cv-bm-chev">▾</span>
                 </div>
                 <div class="cv-bm-body" id="cv_r_bm_body" ${ (rChar.avatar && rFile && getBookmarks(rChar.avatar, rFile).length) ? '' : 'hidden' }>
@@ -2138,8 +2111,7 @@ function renderReaderSettings(panel) {
                             <div class="cv-bm-item" data-idx="${b.idx}">
                                 <button class="cv-bm-jump" type="button" title="跳转到 #${b.idx}">
                                     <span class="cv-bm-floor">#${b.idx}</span>
-                                    <span class="cv-bm-text">${escapeHtml(b.note || b.snippet || '（无内容）')}</span>
-                                    ${ b.note && b.snippet ? `<span class="cv-bm-snippet">${escapeHtml(b.snippet)}</span>` : '' }
+                                    <span class="cv-bm-text">${escapeHtml(b.note || `楼层 ${b.idx}`)}</span>
                                 </button>
                                 <button class="cv-bm-del" type="button" title="删除">${ICONS.trash}</button>
                             </div>
