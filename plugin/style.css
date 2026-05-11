@@ -255,6 +255,8 @@
     letter-spacing: 0.04em;
     cursor: pointer;
     transition: background-color 0.15s, color 0.15s;
+    /* v0.5.7-test: 标题与下方数字都居中（PC/手机端共用） */
+    text-align: center;
 }
 
 .cv-tab:hover { background: rgba(255, 255, 255, 0.04); }
@@ -264,11 +266,17 @@
     color: var(--cv-accent);
 }
 
+/* v0.5.7-test: 数字单独成行并居中。原来用 margin-left:6px 让它贴标题右侧，
+   但 tabbar 一窄就会换行，那个左 margin 会变成行首偏移，加上 button 默认
+   text-align:start，数字看起来就在标题左下而不是正下方。改成 block + 无左margin
+   + 父级 text-align:center 后，PC 和手机两端都稳定居中。 */
 .cv-tab .cv-tab-count {
-    margin-left: 6px;
+    display: block;
+    margin: 2px 0 0;
     opacity: 0.65;
     font-size: 11px;
     font-weight: 400;
+    line-height: 1.2;
 }
 
 .cv-pagination {
