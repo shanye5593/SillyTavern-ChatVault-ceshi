@@ -4,7 +4,7 @@
  * https://github.com/shanye5593/SillyTavern-ChatVault
  */
 
-const VERSION = '0.5.5-test';
+const VERSION = '0.5.6-test';
 const STORAGE_KEY = 'st-chatvault-meta';
 const SETTINGS_KEY = 'st-chatvault-settings';
 const PAGE_SIZE = 50;
@@ -626,7 +626,7 @@ function openPanel() {
             <div class="cv-tabbar">
                 <div class="cv-tabs" id="cv_tabs">
                     <button class="cv-tab active" data-tab="recent">最近<span class="cv-tab-count" id="cv_count_recent"></span></button>
-                    <button class="cv-tab" data-tab="characters">按角色<span class="cv-tab-count" id="cv_count_characters"></span></button>
+                    <button class="cv-tab" data-tab="characters">角色<span class="cv-tab-count" id="cv_count_characters"></span></button>
                     <button class="cv-tab" data-tab="favorites">收藏<span class="cv-tab-count" id="cv_count_favorites"></span></button>
                     <button class="cv-tab" data-tab="current">当前角色<span class="cv-tab-count" id="cv_count_current"></span></button>
                 </div>
@@ -894,8 +894,9 @@ function updateTabCounts() {
     const totalAll = flatAllChats().length;
     const totalFav = flatAllChats().filter(({ character, chat }) =>
         getMetaFor(character.avatar, chat.file_name).starred).length;
-    // 旧语义：tab 上的数字仍然只数"有聊天的角色"，便于判断在用的角色数量
-    const totalChars = viewByCharacter({ withChatsOnly: true }).length;
+    // v0.5.6-test: 「角色」tab 上的数字 = 已加载的全部角色卡数量（含 0 聊天），
+    // 与列表实际可见的总数对应，不再产生"显示 40 但其实有更多"的歧义。
+    const totalChars = (charactersCache || []).length;
     const cur = getCurrentCharacter();
     const totalCur = cur ? (chatsByAvatar[cur.avatar] || []).length : 0;
     const set = (id, n) => { const el = document.getElementById(id); if (el) el.textContent = n; };
