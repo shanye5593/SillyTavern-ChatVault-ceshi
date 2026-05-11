@@ -2879,13 +2879,34 @@ let _cvWelcomeObserver = null;
 function injectWelcomeButton() {
     const s = loadSettings();
     if (!s.enabled || !s.welcomeButton) return;
-    // 找欢迎消息里的按钮：系统消息 mes_text 内的 .menu_button
-    // 兼容 ST 不同版本对系统消息的标记方式（属性 is_system="true" 或类名 is_system）
-    const sel = '#chat .mes[is_system="true"] .mes_text .menu_button, '
-              + '#chat .mes.is_system .mes_text .menu_button';
-    const officials = document.querySelectorAll(sel);
+    // 多套选择器逐级回退，兼容不同版本的酒馆欢迎消息 DOM
+    // 1) 已知 ID（ST 主流欢迎页常见）：API/角色/扩展按钮
+    // 2) 系统消息 mes_text 里的 menu_button（含 is_system 属性 / class 两种写法）
+    // 3) 兜底：#chat 内任意 mes_text 里的 menu_button（欢迎页一般只有这一处有 menu_button）
+    const candidates = [];
+    const knownIds = ['#api_button', '#api_button_main', '#advanced_div', '#extensionsMenuButton'];
+    knownIds.forEach(id => { const el = document.querySelector(`#chat ${id}, ${id}`); if (el && el.closest('#chat')) candidates.push(el); });
+    if (candidates.length === 0) {
+        document.querySelectorAll('#chat .mes[is_system="true"] .mes_text .menu_button, '
+                               + '#chat .mes.is_system .mes_text .menu_button').forEach(el => candidates.push(el));
+    }
+    if (candidates.length === 0) {
+        document.querySelectorAll('#chat .mes_text .menu_button').forEach(el => candidates.push(el));
+    }
+    if (candidates.length === 0) {
+        // 最后兜底：直接 #chat 内的 menu_button（不限 mes_text）
+        document.querySelectorAll('#chat .menu_button').forEach(el => candidates.push(el));
+    }
+    if (candidates.length === 0) {
+        if (!injectWelcomeButton._warned) {
+            console.warn('[ChatVault] 欢迎页按钮：未找到官方按钮容器，可能酒馆欢迎页 DOM 结构变了。'
+                + '可在控制台运行 window._cvDebugWelcome() 查看实际结构。');
+            injectWelcomeButton._warned = true;
+        }
+        return;
+    }
     const seenRows = new Set();
-    officials.forEach((official) => {
+    candidates.forEach((official) => {
         const row = official.parentElement;
         if (!row || seenRows.has(row)) return;
         seenRows.add(row);
@@ -2899,8 +2920,29 @@ function injectWelcomeButton() {
         btn.innerHTML = '<i class="fa-solid fa-folder-open"></i><span>聊天档案</span>';
         btn.addEventListener('click', (e) => { e.preventDefault(); openPanel(); });
         row.appendChild(btn);
+        if (!injectWelcomeButton._loggedOnce) {
+            console.log('[ChatVault] 欢迎页按钮已注入，参考节点：', official, '父容器：', row);
+            injectWelcomeButton._loggedOnce = true;
+        }
     });
 }
+
+// 控制台诊断助手：让用户能告诉我实际 DOM 结构
+window._cvDebugWelcome = function() {
+    const chat = document.getElementById('chat');
+    if (!chat) { console.log('[CV-DEBUG] #chat 不存在'); return; }
+    const mes = chat.querySelectorAll('.mes');
+    console.log(`[CV-DEBUG] #chat 内有 ${mes.length} 条消息`);
+    mes.forEach((m, i) => {
+        console.log(`  [${i}] is_system=`, m.getAttribute('is_system'),
+            ' classes=', m.className,
+            ' menu_buttons=', m.querySelectorAll('.menu_button').length);
+    });
+    const allBtns = chat.querySelectorAll('.menu_button');
+    console.log(`[CV-DEBUG] #chat 内总共 ${allBtns.length} 个 .menu_button:`);
+    allBtns.forEach((b, i) => console.log(`  btn[${i}]`, b, '父：', b.parentElement));
+    return { messageCount: mes.length, buttonCount: allBtns.length };
+};
 
 function removeWelcomeButton() {
     document.querySelectorAll('[data-cv-welcome-btn]').forEach(el => el.remove());
