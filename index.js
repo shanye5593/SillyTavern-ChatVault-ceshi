@@ -85,9 +85,9 @@ function loadSettings() {
         const s = { ...DEFAULT_SETTINGS, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') };
         // v0.3.14 迁移：阅读 / 导出 规则合并为同一套
         if (s.readStrip || s.readExtract || s.userReadRules) {
-            if (s.readStrip   && !localStorage.getItem(SETTINGS_KEY + '__migrated_strip'))   s.strip     = { ...DEFAULT_STRIP,   ...s.readStrip };
-            if (s.readExtract && !localStorage.getItem(SETTINGS_KEY + '__migrated_extract')) s.extract   = { ...DEFAULT_EXTRACT, ...s.readExtract };
-            if (s.userReadRules)                                                              s.userRules = JSON.parse(JSON.stringify(s.userReadRules));
+            if (s.readStrip)      s.strip     = { ...DEFAULT_STRIP,   ...s.readStrip };
+            if (s.readExtract)    s.extract   = { ...DEFAULT_EXTRACT, ...s.readExtract };
+            if (s.userReadRules)  s.userRules = JSON.parse(JSON.stringify(s.userReadRules));
             delete s.readStrip; delete s.readExtract; delete s.userReadRules;
             try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); } catch {}
         }
@@ -704,6 +704,9 @@ function escHandler(e) {
 }
 
 function closePanel() {
+    // 阅读模式楼层菜单可能还开着；它在 document 上挂了 mousedown/touchstart capture 监听
+    // 不显式 close 会导致这两个监听器残留 + 闭包持有已 detach 的菜单节点
+    closeMsgMenu();
     if (previewObserver) { previewObserver.disconnect(); previewObserver = null; }
     // 移除 PC 端 window resize 监听，避免反复开关导致监听器堆积
     if (panelEl && panelEl._cvOnResize) {
@@ -2823,6 +2826,10 @@ async function handleDelete(character, fileName) {
         delete full[metaKey(character.avatar, fileName)];
         saveMeta(full);
         previewCache.delete(metaKey(character.avatar, fileName));
+        // 该角色已经空了，连带清理错误记录，避免角色卡上残留过时报错
+        if (chatsByAvatar[character.avatar].length === 0) {
+            delete errorsByAvatar[character.avatar];
+        }
         setStatus('✓ 已删除');
         render();
     } catch (e) {
@@ -2883,6 +2890,7 @@ function injectWelcomeButton() {
     // 1) 已知 ID（ST 主流欢迎页常见）：API/角色/扩展按钮
     // 2) 系统消息 mes_text 里的 menu_button（含 is_system 属性 / class 两种写法）
     // 3) 兜底：#chat 内任意 mes_text 里的 menu_button（欢迎页一般只有这一处有 menu_button）
+    // 注意：不再向 #chat 下任意 .menu_button 兜底——避免别的扩展往消息体里塞按钮时被误命中
     const candidates = [];
     const knownIds = ['#api_button', '#api_button_main', '#advanced_div', '#extensionsMenuButton'];
     knownIds.forEach(id => { const el = document.querySelector(`#chat ${id}, ${id}`); if (el && el.closest('#chat')) candidates.push(el); });
@@ -2892,10 +2900,6 @@ function injectWelcomeButton() {
     }
     if (candidates.length === 0) {
         document.querySelectorAll('#chat .mes_text .menu_button').forEach(el => candidates.push(el));
-    }
-    if (candidates.length === 0) {
-        // 最后兜底：直接 #chat 内的 menu_button（不限 mes_text）
-        document.querySelectorAll('#chat .menu_button').forEach(el => candidates.push(el));
     }
     if (candidates.length === 0) {
         if (!injectWelcomeButton._warned) {
@@ -2957,7 +2961,9 @@ function startWelcomeObserver() {
         if (obs._raf) return;
         obs._raf = requestAnimationFrame(() => { obs._raf = 0; injectWelcomeButton(); });
     });
-    obs.observe(chat, { childList: true, subtree: true });
+    // 欢迎消息是 #chat 的直接子元素，只需观察直接子节点的增删
+    // 不要 subtree:true——开了之后流式回复每个 token 都会触发回调，长会话下白白吃 CPU
+    obs.observe(chat, { childList: true });
     _cvWelcomeObserver = obs;
     injectWelcomeButton();
 }
