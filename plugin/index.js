@@ -4,10 +4,11 @@
  * https://github.com/shanye5593/SillyTavern-ChatVault
  */
 
-const VERSION = '0.5.3-test';
+const VERSION = '0.5.4-test';
 const STORAGE_KEY = 'st-chatvault-meta';
 const SETTINGS_KEY = 'st-chatvault-settings';
 const PAGE_SIZE = 50;
+const CHAR_PAGE_SIZE = 30;   // 「按角色」tab 每页角色卡数（含 0 聊天）
 const THEMES = [
     { id: 'dark',   name: '夜间 Dark' },
     { id: 'light',  name: '白底 Light' },
@@ -845,19 +846,27 @@ function viewCurrentCharacter() {
     return { character: c, items: list };
 }
 
-function viewByCharacter() {
+function viewByCharacter({ withChatsOnly = false } = {}) {
     // 按角色分组：[{character, chats: [...]}]，每组按时间倒序，组按"该组最新一条"倒序
+    // v0.5.4-test: 默认包含 0 聊天的角色，便于用每组的「新建聊天」按钮快建；
+    //              tab 数字 / 收藏视图等"旧语义"调用方传 withChatsOnly:true 仍只数有聊天的。
+    const q = (searchQuery || '').toLowerCase();
     const groups = [];
     for (const c of charactersCache) {
         const list = (chatsByAvatar[c.avatar] || [])
             .filter(ch => matchesSearch(c, ch))
             .sort((a, b) => timestampOf(b) - timestampOf(a));
-        if (list.length === 0 && searchQuery && !(c.name || '').toLowerCase().includes(searchQuery.toLowerCase())) continue;
-        if (list.length === 0 && !searchQuery) continue; // 无聊天的角色不展示
+        if (searchQuery) {
+            // 搜索时：聊天命中 OR 角色名命中 才显示
+            const nameHit = (c.name || '').toLowerCase().includes(q);
+            if (list.length === 0 && !nameHit) continue;
+        } else if (withChatsOnly && list.length === 0) {
+            continue;
+        }
         groups.push({ character: c, chats: list });
     }
     return groups.sort((a, b) => {
-        // 先按聊天数倒序（防止 0/1 条的角色抢位置），同数再按最新一条时间倒序
+        // 先按聊天数倒序（让 0 聊天的角色沉到最底，不抢位置），同数再按最新一条时间倒序
         if (b.chats.length !== a.chats.length) return b.chats.length - a.chats.length;
         const ta = a.chats[0] ? timestampOf(a.chats[0]) : 0;
         const tb = b.chats[0] ? timestampOf(b.chats[0]) : 0;
@@ -873,7 +882,8 @@ function updateTabCounts() {
     const totalAll = flatAllChats().length;
     const totalFav = flatAllChats().filter(({ character, chat }) =>
         getMetaFor(character.avatar, chat.file_name).starred).length;
-    const totalChars = viewByCharacter().length;
+    // 旧语义：tab 上的数字仍然只数"有聊天的角色"，便于判断在用的角色数量
+    const totalChars = viewByCharacter({ withChatsOnly: true }).length;
     const cur = getCurrentCharacter();
     const totalCur = cur ? (chatsByAvatar[cur.avatar] || []).length : 0;
     const set = (id, n) => { const el = document.getElementById(id); if (el) el.textContent = n; };
@@ -891,8 +901,13 @@ function render() {
     updateTabCounts();
 
     if (activeTab === 'characters') {
-        renderCharactersTab(body);
-        renderPagination(0, 1);
+        // v0.5.4-test: 「按角色」改为分页（每页 CHAR_PAGE_SIZE 张角色卡），含 0 聊天的角色
+        const groups = viewByCharacter();
+        const totalPagesC = Math.max(1, Math.ceil(groups.length / CHAR_PAGE_SIZE));
+        if (currentPage > totalPagesC) currentPage = totalPagesC;
+        const sliceC = groups.slice((currentPage - 1) * CHAR_PAGE_SIZE, currentPage * CHAR_PAGE_SIZE);
+        renderCharactersTab(body, sliceC);
+        renderPagination(groups.length, totalPagesC);
         return;
     }
 
@@ -978,10 +993,11 @@ function render() {
     renderPagination(items.length, totalPages);
 }
 
-function renderCharactersTab(body) {
-    const groups = viewByCharacter();
+function renderCharactersTab(body, groups) {
+    // v0.5.4-test: groups 由 render() 切好分页后传入；不传则退化为全量（兼容旧调用）
+    if (!groups) groups = viewByCharacter();
     if (groups.length === 0) {
-        body.innerHTML = `<div class="cv-empty">${searchQuery ? '没有匹配的结果' : '没有任何聊天记录'}</div>`;
+        body.innerHTML = `<div class="cv-empty">${searchQuery ? '没有匹配的结果' : '没有任何角色'}</div>`;
         return;
     }
     // 搜索时默认全部展开，便于看到匹配结果；否则按用户记忆的状态（默认折叠）
@@ -990,12 +1006,14 @@ function renderCharactersTab(body) {
             ? `/thumbnail?type=avatar&file=${encodeURIComponent(c.avatar)}`
             : '';
         const errMsg = errorsByAvatar[c.avatar];
+        const isEmpty = chats.length === 0;
         const right = errMsg
             ? `<span class="cv-group-error" title="${escapeHtml(errMsg)}">⚠ 加载失败</span>`
-            : `<span class="cv-group-count">共 ${chats.length} 条聊天</span>`;
-        const expanded = !!searchQuery || groupOpen.has(c.avatar);
+            : `<span class="cv-group-count">${isEmpty ? '暂无聊天' : `共 ${chats.length} 条聊天`}</span>`;
+        // 0 聊天的组：永远不展开（没东西可展开）；其余按搜索 / 记忆状态
+        const expanded = !isEmpty && (!!searchQuery || groupOpen.has(c.avatar));
         return `
-            <div class="cv-group ${expanded ? 'is-open' : ''}" data-avatar="${escapeHtml(c.avatar)}">
+            <div class="cv-group ${expanded ? 'is-open' : ''} ${isEmpty ? 'is-empty' : ''}" data-avatar="${escapeHtml(c.avatar)}">
                 <div class="cv-group-header">
                     <span class="cv-group-toggle">${ICONS.chevR}</span>
                     <img class="cv-group-avatar" src="${avatarUrl}" onerror="this.style.visibility='hidden'" alt="" />
@@ -1028,6 +1046,8 @@ function renderCharactersTab(body) {
             };
         }
         header.onclick = () => {
+            // v0.5.4-test: 0 聊天的组没东西可展开，避免无意义切换
+            if (g.classList.contains('is-empty')) return;
             const nowOpen = !g.classList.contains('is-open');
             g.classList.toggle('is-open', nowOpen);
             if (nowOpen) groupOpen.add(avatar);
@@ -1110,7 +1130,7 @@ function renderCard(character, chat, hideCharName = false) {
 function renderPagination(total, totalPages) {
     const el = document.getElementById('cv_pagination');
     if (!el) return;
-    if (activeTab === 'characters' || total === 0) {
+    if (total === 0) {
         el.innerHTML = '';
         return;
     }
