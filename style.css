@@ -1031,6 +1031,10 @@
     overflow-x: hidden;
     background: var(--cv-bg-panel, var(--SmartThemeBlurTintColor, transparent));
     scroll-behavior: smooth;
+    /* v0.5.3-test: 在两侧都预留滚动条空间，避免右侧 8px 滚动条让正文视觉偏左
+       —— 否则配合首行缩进 2em，左右留白会差出 8~30px，非常出戏。
+       手机系统的覆盖式滚动条不占布局，加这条也不会有副作用。 */
+    scrollbar-gutter: stable both-edges;
 }
 .cv-reader-stage::-webkit-scrollbar { width: 8px; }
 .cv-reader-stage::-webkit-scrollbar-thumb { background-color: var(--cv-border, rgba(255,255,255,0.12)); border-radius: 4px; }
