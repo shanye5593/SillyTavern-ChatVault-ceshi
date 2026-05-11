@@ -4,7 +4,7 @@
  * https://github.com/shanye5593/SillyTavern-ChatVault
  */
 
-const VERSION = '0.5.9-test';
+const VERSION = '0.5.9';
 const STORAGE_KEY = 'st-chatvault-meta';
 const SETTINGS_KEY = 'st-chatvault-settings';
 const PAGE_SIZE = 50;
@@ -76,7 +76,7 @@ const DEFAULT_SETTINGS = {
     windowHotkey: false,               // 是否启用全局快捷键开关面板
     windowHotkeyCombo: 'Alt+V',        // 快捷键组合
     windowState: null,                 // 记忆位置：{ x, y, scale }
-    // v0.5.9-test：是否在酒馆欢迎页底部追加「聊天档案」快捷按钮（与 API 连接/角色管理/扩展程序 同排）
+    // 是否在酒馆欢迎页底部追加「聊天档案」快捷按钮（与 API 连接/角色管理/扩展程序 同排）
     welcomeButton: true,
 };
 
@@ -2902,7 +2902,7 @@ function applyEnabledState() {
 }
 
 /* ============================================================
- *  欢迎页快捷入口（v0.5.9-test 起）
+ *  欢迎页快捷入口
  *  在酒馆欢迎消息底部那排官方按钮（API 连接 / 角色管理 / 扩展程序）
  *  末尾追加一个"聊天档案"按钮，外观沿用官方 .menu_button 样式。
  *  - 用 MutationObserver 监听 #chat，欢迎消息每次重渲都会自动补回按钮
