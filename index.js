@@ -2917,7 +2917,7 @@ function injectWelcomeButton() {
         btn.className = official.className;
         btn.setAttribute('data-cv-welcome-btn', '1');
         btn.title = '打开聊天档案';
-        btn.innerHTML = '<i class="fa-solid fa-folder-open"></i><span>聊天档案</span>';
+        btn.innerHTML = '<i class="fa-solid fa-book"></i><span>聊天档案</span>';
         btn.addEventListener('click', (e) => { e.preventDefault(); openPanel(); });
         row.appendChild(btn);
         if (!injectWelcomeButton._loggedOnce) {
