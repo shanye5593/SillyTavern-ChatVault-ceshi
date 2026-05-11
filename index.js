@@ -4,7 +4,7 @@
  * https://github.com/shanye5593/SillyTavern-ChatVault
  */
 
-const VERSION = '0.5.8-test';
+const VERSION = '0.5.9-test';
 const STORAGE_KEY = 'st-chatvault-meta';
 const SETTINGS_KEY = 'st-chatvault-settings';
 const PAGE_SIZE = 50;
@@ -76,6 +76,8 @@ const DEFAULT_SETTINGS = {
     windowHotkey: false,               // 是否启用全局快捷键开关面板
     windowHotkeyCombo: 'Alt+V',        // 快捷键组合
     windowState: null,                 // 记忆位置：{ x, y, scale }
+    // v0.5.9-test：是否在酒馆欢迎页底部追加「聊天档案」快捷按钮（与 API 连接/角色管理/扩展程序 同排）
+    welcomeButton: true,
 };
 
 function loadSettings() {
@@ -2860,6 +2862,77 @@ function applyEnabledState() {
         removeButton();
         if (panelEl) closePanel();
     }
+    applyWelcomeButtonState();
+}
+
+/* ============================================================
+ *  欢迎页快捷入口（v0.5.9-test 起）
+ *  在酒馆欢迎消息底部那排官方按钮（API 连接 / 角色管理 / 扩展程序）
+ *  末尾追加一个"聊天档案"按钮，外观沿用官方 .menu_button 样式。
+ *  - 用 MutationObserver 监听 #chat，欢迎消息每次重渲都会自动补回按钮
+ *  - 用 data-cv-welcome-btn 标记防重复注入
+ *  - 总开关 enabled 关闭 / 单独开关 welcomeButton 关闭时都会移除并停掉 observer
+ * ============================================================ */
+
+let _cvWelcomeObserver = null;
+
+function injectWelcomeButton() {
+    const s = loadSettings();
+    if (!s.enabled || !s.welcomeButton) return;
+    // 找欢迎消息里的按钮：系统消息 mes_text 内的 .menu_button
+    // 兼容 ST 不同版本对系统消息的标记方式（属性 is_system="true" 或类名 is_system）
+    const sel = '#chat .mes[is_system="true"] .mes_text .menu_button, '
+              + '#chat .mes.is_system .mes_text .menu_button';
+    const officials = document.querySelectorAll(sel);
+    const seenRows = new Set();
+    officials.forEach((official) => {
+        const row = official.parentElement;
+        if (!row || seenRows.has(row)) return;
+        seenRows.add(row);
+        if (row.querySelector('[data-cv-welcome-btn]')) return;
+        // 复用官方按钮的 className，外观/hover/间距完全一致
+        const tag = (official.tagName || 'div').toLowerCase();
+        const btn = document.createElement(tag);
+        btn.className = official.className;
+        btn.setAttribute('data-cv-welcome-btn', '1');
+        btn.title = '打开聊天档案';
+        btn.innerHTML = '<i class="fa-solid fa-folder-open"></i><span>聊天档案</span>';
+        btn.addEventListener('click', (e) => { e.preventDefault(); openPanel(); });
+        row.appendChild(btn);
+    });
+}
+
+function removeWelcomeButton() {
+    document.querySelectorAll('[data-cv-welcome-btn]').forEach(el => el.remove());
+}
+
+function startWelcomeObserver() {
+    if (_cvWelcomeObserver) { injectWelcomeButton(); return; }
+    const chat = document.getElementById('chat');
+    if (!chat) return;
+    const obs = new MutationObserver(() => {
+        // 节流：合并同一帧内的多次变更，避免每条 mutation 都跑一次 querySelectorAll
+        if (obs._raf) return;
+        obs._raf = requestAnimationFrame(() => { obs._raf = 0; injectWelcomeButton(); });
+    });
+    obs.observe(chat, { childList: true, subtree: true });
+    _cvWelcomeObserver = obs;
+    injectWelcomeButton();
+}
+
+function stopWelcomeObserver() {
+    if (_cvWelcomeObserver) {
+        if (_cvWelcomeObserver._raf) cancelAnimationFrame(_cvWelcomeObserver._raf);
+        _cvWelcomeObserver.disconnect();
+        _cvWelcomeObserver = null;
+    }
+    removeWelcomeButton();
+}
+
+function applyWelcomeButtonState() {
+    const s = loadSettings();
+    if (s.enabled && s.welcomeButton) startWelcomeObserver();
+    else stopWelcomeObserver();
 }
 
 /* ============================================================
@@ -3244,6 +3317,12 @@ function injectSettings() {
             </label>
           </div>
           <div class="cv-settings-row">
+            <label class="checkbox_label" for="cv_set_welcome_btn">
+              <input type="checkbox" id="cv_set_welcome_btn" ${s.welcomeButton ? 'checked' : ''}>
+              <span>在欢迎页底部显示快捷按钮（与 API 连接 / 角色管理 / 扩展程序 同排）</span>
+            </label>
+          </div>
+          <div class="cv-settings-row">
             <label for="cv_set_theme">配色方案：</label>
             <select id="cv_set_theme">
               ${THEMES.map(t => `<option value="${t.id}" ${s.theme === t.id ? 'selected' : ''}>${t.name}</option>`).join('')}
@@ -3329,6 +3408,11 @@ function injectSettings() {
         const cur = loadSettings();
         saveSettings({ ...cur, enabled: !!e.target.checked });
         applyEnabledState();
+    });
+    wrap.querySelector('#cv_set_welcome_btn').addEventListener('change', (e) => {
+        const cur = loadSettings();
+        saveSettings({ ...cur, welcomeButton: !!e.target.checked });
+        applyWelcomeButtonState();
     });
     wrap.querySelector('#cv_set_theme').addEventListener('change', (e) => {
         const cur = loadSettings();
@@ -3559,10 +3643,13 @@ jQuery(async () => {
         if (document.getElementById('extensionsMenu')) applyEnabledState();
         if (document.getElementById('extensions_settings2')
          || document.getElementById('extensions_settings')) injectSettings();
+        // 欢迎页按钮：等 #chat 就绪后挂 observer（observer 自己会重试）
+        if (document.getElementById('chat')) applyWelcomeButtonState();
 
         const needBtn = loadSettings().enabled && !document.getElementById('chatvault_open_btn');
         const needSet = !document.getElementById('chatvault_settings');
-        if (needBtn || needSet) {
+        const needWelcomeObs = loadSettings().enabled && loadSettings().welcomeButton && !_cvWelcomeObserver;
+        if (needBtn || needSet || needWelcomeObs) {
             setTimeout(tryInject, 500);
         }
     };
