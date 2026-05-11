@@ -402,6 +402,17 @@ function waitFor(predicate, timeout = 3000, interval = 50) {
     });
 }
 
+// 关键反幽灵函数：select(chid) 内部会读 character.chat 决定打开哪个聊天文件
+// 如果该字段指向不存在的文件（被删了/外部改过/从未设过），ST 会自动新建一个 ~100B 的空聊天作为占位
+// 在 select 之前预热这个字段，让 ST 直接打开已知存在的聊天，避免幽灵增殖
+function _ensureCharacterChatField(charObj, preferred) {
+    if (!charObj) return;
+    if (preferred) { charObj.chat = preferred; return; }
+    // newChat 场景没有具体目标：挑一个已知存在的，让 select 别再自动建空聊天
+    const list = chatsByAvatar[charObj.avatar] || [];
+    if (list.length > 0) charObj.chat = stripExt(list[0].file_name);
+}
+
 async function newChatFor(character) {
     try {
         const ctx = SillyTavern.getContext();
@@ -420,6 +431,8 @@ async function newChatFor(character) {
 
         const select = ctx.selectCharacterById || window.selectCharacterById;
         if (typeof select !== 'function') throw new Error('当前 ST 版本不支持自动切换角色');
+        // 反幽灵：select 前预设 chat 字段为已知存在的聊天，避免 ST 找不到旧聊天而新建空聊天
+        if (hadExistingChats) _ensureCharacterChatField(target.c);
         await select(chid);
 
         const ok = await waitFor(() => {
@@ -462,8 +475,12 @@ async function jumpToChat(character, fileName) {
         if (!target) throw new Error('找不到角色（可能已被删除）');
         const chid = target.idx;
 
+        const target2 = stripExt(fileName);
         const select = ctx.selectCharacterById || window.selectCharacterById;
         if (typeof select !== 'function') throw new Error('当前 ST 版本不支持自动切换角色');
+        // 反幽灵：先把 character.chat 指向真正要去的聊天，再 select
+        // 否则若 character.chat 仍指向已删/不存在的旧聊天，ST 会先新建一个空聊天作占位
+        _ensureCharacterChatField(target.c, target2);
         await select(chid);
 
         const ok = await waitFor(() => {
@@ -471,8 +488,6 @@ async function jumpToChat(character, fileName) {
             return Number(c.characterId) === chid;
         }, 3000);
         if (!ok) throw new Error('角色切换超时');
-
-        const target2 = stripExt(fileName);
         const open = ctx.openCharacterChat || window.openCharacterChat;
         // 提前关闭面板：手机端等 await 完成才关会出现 openCharacterChat 不 resolve / 软键盘事件吃掉关闭逻辑等问题
         closePanel();
@@ -2830,6 +2845,20 @@ async function handleDelete(character, fileName) {
         if (chatsByAvatar[character.avatar].length === 0) {
             delete errorsByAvatar[character.avatar];
         }
+        // 反幽灵：ST 内存里所有同名同 avatar 角色的 character.chat 如果还指向刚删的文件，
+        // 把它换成该角色现存的最新聊天（或清空）。否则下次切到该角色时 ST 会
+        // "找不到旧聊天 → 自动新建空聊天" → 出现 ~100B 的幽灵记录
+        try {
+            const ctx = SillyTavern.getContext();
+            const remaining = chatsByAvatar[character.avatar];
+            const fallback = remaining.length > 0 ? stripExt(remaining[0].file_name) : '';
+            const stripped = stripExt(fileName);
+            ctx.characters.forEach(c => {
+                if (c.avatar === character.avatar && stripExt(c.chat || '') === stripped) {
+                    c.chat = fallback;
+                }
+            });
+        } catch {}
         setStatus('✓ 已删除');
         render();
     } catch (e) {
