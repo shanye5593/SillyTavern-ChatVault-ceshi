@@ -1,6 +1,6 @@
 /**
  * SillyTavern ChatVault — 全局聊天档案管理器
- * v0.2.3 — 修复手机端编辑弹窗顶起 + 导出折叠 + 滑块开关 + 导入图标改向内
+ * 版本号见下方 VERSION 常量（单一事实源）
  * https://github.com/shanye5593/SillyTavern-ChatVault
  */
 
@@ -1109,7 +1109,7 @@ function renderCard(character, chat, hideCharName = false) {
     const jumpLabel = active ? '已打开' : '继续';
 
     return `
-        <div class="cv-card ${active ? 'is-active' : ''}" data-avatar="${escapeHtml(character.avatar)}" data-file="${escapeHtml(chat.file_name)}">
+        <div class="cv-card ${active ? 'is-active' : ''}" data-avatar="${escapeHtml(character.avatar)}" data-name="${escapeHtml(character.name || '')}" data-file="${escapeHtml(chat.file_name)}">
             <img class="cv-card-avatar" src="${avatarUrl}" onerror="this.style.visibility='hidden'" alt="" />
             <div class="cv-card-main">
                 <div class="cv-card-row">
@@ -1163,8 +1163,12 @@ function renderPagination(total, totalPages) {
 function bindCardEvents() {
     document.querySelectorAll('.cv-card').forEach(card => {
         const avatar = card.dataset.avatar;
+        const cName  = card.dataset.name || '';
         const fileName = card.dataset.file;
-        const character = charactersCache.find(c => c.avatar === avatar);
+        // 同 avatar 不同 name 的角色（同一张 png 被复制成两个角色）会并存
+        // 必须 (avatar, name) 双键查找，否则操作会落到错的那个角色上
+        const character = charactersCache.find(c => c.avatar === avatar && (c.name || '') === cName)
+                       || charactersCache.find(c => c.avatar === avatar);
         if (!character) return;
 
         card.querySelectorAll('.cv-act').forEach(btn => {
@@ -1269,6 +1273,9 @@ function observePreviews() {
             if (text === null) {
                 el.classList.remove('is-loading'); el.classList.add('is-empty');
                 el.textContent = '（无法加载预览）';
+                // 失败仍然挂上 observer：缓存 TTL 过期后用户重新滚动到这里就会自动重试
+                // fetchLastMessageText 内部会按 cache 状态决定是否真发请求，不会浪费流量
+                previewObserver.observe(el);
             } else if (!text) {
                 el.classList.remove('is-loading'); el.classList.add('is-empty');
                 el.textContent = '（空聊天）';
@@ -2647,7 +2654,22 @@ function openEditModal(character, fileName) {
 
         // 1. 文件重命名（如改了）
         let curFile = fileName;
-        if (newFile && newFile !== fileName) {
+        if (newFile !== fileName) {
+            // 校验：空字符串、路径分隔符、控制字符、相对路径段一律拒绝
+            // 白名单：中英文数字 + 常见标点；服务端会再校验一次，这里只是给用户即时反馈
+            const FILENAME_RE = /^[\w.\u4e00-\u9fa5 \-()【】\[\]·、，,]+$/;
+            if (!newFile) {
+                toastr.warning('文件名不能为空');
+                return;
+            }
+            if (newFile.includes('/') || newFile.includes('\\') || newFile.includes('..')) {
+                toastr.error('文件名不能包含路径分隔符或 ..');
+                return;
+            }
+            if (!FILENAME_RE.test(stripExt(newFile))) {
+                toastr.error('文件名包含不允许的字符（仅允许字母数字中文及常见标点）');
+                return;
+            }
             try {
                 setStatus('正在重命名文件…');
                 await renameChat(character.avatar, fileName, newFile);
@@ -3066,20 +3088,24 @@ function matchHotkey(e, combo) {
         && !!e.metaKey  === combo.meta;
 }
 
+function _cvHotkeyHandler(e) {
+    const s = loadSettings();
+    if (!s.windowHotkey) return;
+    const combo = parseHotkeyCombo(s.windowHotkeyCombo || 'Alt+V');
+    if (!matchHotkey(e, combo)) return;
+    const t = e.target;
+    const tag = (t?.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || t?.isContentEditable) return;
+    e.preventDefault();
+    if (panelEl) closePanel(); else openPanel();
+}
 function setupHotkey() {
-    if (window._cvHotkeyBound) return;
-    window._cvHotkeyBound = true;
-    document.addEventListener('keydown', (e) => {
-        const s = loadSettings();
-        if (!s.windowHotkey) return;
-        const combo = parseHotkeyCombo(s.windowHotkeyCombo || 'Alt+V');
-        if (!matchHotkey(e, combo)) return;
-        const t = e.target;
-        const tag = (t?.tagName || '').toLowerCase();
-        if (tag === 'input' || tag === 'textarea' || t?.isContentEditable) return;
-        e.preventDefault();
-        if (panelEl) closePanel(); else openPanel();
-    });
+    // 用命名函数引用，支持热重载/再次 setup 时清掉旧监听器，避免老 handler 残留
+    if (window._cvHotkeyHandler) {
+        document.removeEventListener('keydown', window._cvHotkeyHandler);
+    }
+    window._cvHotkeyHandler = _cvHotkeyHandler;
+    document.addEventListener('keydown', window._cvHotkeyHandler);
 }
 
 /* ============================================================
@@ -3097,11 +3123,21 @@ function applyCustomFont() {
     const fonts = Array.isArray(s.customFonts) ? s.customFonts : [];
     // 消毒：去掉可能用来注入额外 CSS 规则的字符
     const sanitize = (v) => String(v || '').replace(/['"\\;{}<>]/g, '').trim();
-    const sanitizeUrl = (v) => String(v || '').replace(/['"\\;<>]/g, '').trim();
-    const cleaned = fonts.map(f => ({
-        family: sanitize(f && f.family),
-        url:    sanitizeUrl(f && f.url),
-    })).filter(f => f.family || f.url);
+    // 字体 URL 消毒：除了引号/反斜杠/分号/尖括号外，还要剔除空白(含换行)、花括号、圆括号
+    // 防止攻击者通过换行符 + } 逃出 @font-face 块注入任意 CSS 规则
+    const sanitizeUrl = (v) => String(v || '').replace(/[\s'"\\;<>{}()]/g, '').trim();
+    // 仅允许 https:// 开头的 URL；http / data / blob / 相对路径都拒绝
+    const isAllowedUrl = (u) => /^https:\/\/[^\s]+$/i.test(u);
+    const cleaned = fonts.map(f => {
+        const family = sanitize(f && f.family);
+        const rawUrl = sanitizeUrl(f && f.url);
+        const url = (rawUrl && isAllowedUrl(rawUrl)) ? rawUrl : '';
+        // 用户填了 URL 但不合法时静默丢弃，避免污染样式表
+        if (rawUrl && !url) {
+            console.warn('[ChatVault] 字体 URL 未通过校验（仅允许 https://），已忽略:', rawUrl.slice(0, 80));
+        }
+        return { family, url };
+    }).filter(f => f.family || f.url);
     if (cleaned.length === 0) { style.textContent = ''; return; }
     // 关键：每条 URL 字体都用独立的内部固定名注册，避免污染酒馆全局命名
     // 优先级：第 1 条 URL 字体 → 第 1 条 family → 第 2 条 URL → 第 2 条 family → ... → 系统兜底
@@ -3324,7 +3360,7 @@ function injectSettings() {
               <button class="cv-font-btn cv-font-del" data-act="del" title="删除">×</button>
             </div>
             <input type="text" class="text_pole cv-font-input" data-field="family" placeholder="字体名（系统/酒馆已加载的；用作回退）" value="${escapeHtml(f.family || '')}">
-            <input type="text" class="text_pole cv-font-input" data-field="url"    placeholder="字体 URL（可选，以 https:// 开头的 .woff2/.ttf）" value="${escapeHtml(f.url || '')}">
+            <input type="text" class="text_pole cv-font-input" data-field="url"    placeholder="字体 URL（可选，以 https:// 开头，支持 .woff2/.woff/.ttf/.otf）" value="${escapeHtml(f.url || '')}">
           </div>
         `).join('');
     };
