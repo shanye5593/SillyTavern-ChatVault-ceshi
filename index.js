@@ -1499,12 +1499,13 @@ function renderRichMd(raw) {
         if (line.trim() === '') { i++; continue; }
 
         // HTML 直通行（以 <tag> 开头，整段不再 escape，也不包 <p>）
+        // 注意：进入此分支时 line 本身就是 HTML 起始 —— 必须先消费 line 再用 _cvIsBlockStart 判后续行，否则死循环
         if (/^\s*<[a-zA-Z][^>]*>/.test(line)) {
-            const htmlBuf = [];
+            const htmlBuf = [line];
+            i++;
             while (i < lines.length && lines[i].trim() !== '' && !_cvIsBlockStart(lines[i], lines[i + 1])) {
                 htmlBuf.push(lines[i]); i++;
             }
-            // 同段第一行已确认是 HTML 起始；后续行无论是不是 HTML 都跟随它，由 DOMPurify 兜底
             out.push(htmlBuf.join('\n'));
             continue;
         }
