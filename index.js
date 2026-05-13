@@ -1749,12 +1749,16 @@ function renderReader() {
         </div>
     `;
 
+    // v0.5.15 fix: renderReader 顶层没有 s 变量，必须显式 load
+    const _readerCfg = loadSettings();
+    const _useRichRender = _readerCfg.readerRichRender !== false;
+
     const cardHtml = slice.map(m => {
         const who = escapeHtml(m.who);
         // 把消息按段落（连续换行视作分段）拆成 <p>，单换行保留为 <br>，便于首行缩进
         // 每个非空"行"包成一段，让首行缩进对每段生效（包含连续换行产生的空行也被丢弃）
         const text = m.text
-            ? ((s.readerRichRender !== false
+            ? ((_useRichRender
                     ? sanitizeMd(renderRichMd(m.text))
                     : renderLiteMd(m.text))
                 || '<span class="cv-reader-empty">（空）</span>')
