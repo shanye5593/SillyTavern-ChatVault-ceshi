@@ -1409,6 +1409,14 @@ function mdInlineRich(s) {
 }
 function mdInline(escaped) { return mdInlineRich(escaped); } // 兼容旧调用点
 
+// 智能 escape：行里出现疑似 HTML tag (`<tag>` / `<tag/>` / `<tag attr=...>`) 时整段不 escape，
+// 让 AI 嵌在文字中的 <img> <span style> <u> <mark> 等能正常渲染（最终由 DOMPurify 兜底安全）；
+// 否则按原规则 escape，保护 `1 < 2` `A & B` 等纯文本不被浏览器误解析。
+function maybeEscapeHtml(s) {
+    if (s == null) return '';
+    return /<[a-zA-Z][^>]{0,500}>/.test(String(s)) ? String(s) : escapeHtml(s);
+}
+
 function _cvParseTableRow(line) {
     let s = line.trim();
     if (s.startsWith('|')) s = s.slice(1);
@@ -1433,6 +1441,7 @@ function renderRichMd(raw) {
     let i = 0;
     while (i < lines.length) {
         const line = lines[i];
+        const _iBefore = i; // 死循环兜底
 
         // 围栏代码块 ```lang ... ```
         const fence = line.match(/^```(\w*)\s*$/);
@@ -1463,7 +1472,7 @@ function renderRichMd(raw) {
             while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) { body.push(_cvParseTableRow(lines[i])); i++; }
             const cell = (c, j, tag) => {
                 const al = aligns[j] ? ` style="text-align:${aligns[j]}"` : '';
-                return `<${tag}${al}>${mdInlineRich(escapeHtml((c || '').trim()))}</${tag}>`;
+                return `<${tag}${al}>${mdInlineRich(maybeEscapeHtml((c || '').trim()))}</${tag}>`;
             };
             const tr = (cells, tag) => '<tr>' + cells.map((c, j) => cell(c, j, tag)).join('') + '</tr>';
             out.push(`<table class="cv-md-table"><thead>${tr(header, 'th')}</thead><tbody>${body.map(r => tr(r, 'td')).join('')}</tbody></table>`);
@@ -1474,7 +1483,7 @@ function renderRichMd(raw) {
         if (/^\s*>\s?/.test(line)) {
             const quoted = [];
             while (i < lines.length && /^\s*>\s?/.test(lines[i])) { quoted.push(lines[i].replace(/^\s*>\s?/, '')); i++; }
-            const inner = quoted.map(q => mdInlineRich(escapeHtml(q))).join('<br>');
+            const inner = quoted.map(q => mdInlineRich(maybeEscapeHtml(q))).join('<br>');
             out.push(`<blockquote class="cv-md-quote">${inner}</blockquote>`);
             continue;
         }
@@ -1483,7 +1492,7 @@ function renderRichMd(raw) {
         if (/^\s*[-*]\s+/.test(line)) {
             const items = [];
             while (i < lines.length && /^\s*[-*]\s+/.test(lines[i])) { items.push(lines[i].replace(/^\s*[-*]\s+/, '')); i++; }
-            out.push(`<ul class="cv-md-ul">${items.map(it => `<li>${mdInlineRich(escapeHtml(it))}</li>`).join('')}</ul>`);
+            out.push(`<ul class="cv-md-ul">${items.map(it => `<li>${mdInlineRich(maybeEscapeHtml(it))}</li>`).join('')}</ul>`);
             continue;
         }
 
@@ -1491,7 +1500,7 @@ function renderRichMd(raw) {
         if (/^\s*\d+\.\s+/.test(line)) {
             const items = [];
             while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) { items.push(lines[i].replace(/^\s*\d+\.\s+/, '')); i++; }
-            out.push(`<ol class="cv-md-ol">${items.map(it => `<li>${mdInlineRich(escapeHtml(it))}</li>`).join('')}</ol>`);
+            out.push(`<ol class="cv-md-ol">${items.map(it => `<li>${mdInlineRich(maybeEscapeHtml(it))}</li>`).join('')}</ol>`);
             continue;
         }
 
@@ -1511,8 +1520,11 @@ function renderRichMd(raw) {
         }
 
         // 普通段落（按行包 <p>，配合首行缩进 CSS）
-        out.push(`<p class="cv-msg-p">${mdInlineRich(escapeHtml(line))}</p>`);
+        out.push(`<p class="cv-msg-p">${mdInlineRich(maybeEscapeHtml(line))}</p>`);
         i++;
+
+        // 死循环防御：若任一分支忘了递增 i，强制前进，避免卡死浏览器
+        if (i === _iBefore) i++;
     }
     return out.join('');
 }
@@ -1529,6 +1541,11 @@ function sanitizeMd(html) {
                     'code', 'pre', 'blockquote', 'ul', 'ol', 'li', 'hr',
                     'table', 'thead', 'tbody', 'tfoot', 'tr', 'td', 'th',
                     'sub', 'sup', 'small', 'mark', 'details', 'summary', 'font', 'a', 'img',
+                    // v0.5.13 扩展：标题 + 语义 + 图配说明 + 定义列表
+                    'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+                    'figure', 'figcaption',
+                    'kbd', 'abbr', 'q', 'cite', 'time', 'ruby', 'rt', 'rp', 'bdi', 'bdo', 'wbr',
+                    'dl', 'dt', 'dd',
                 ],
                 ALLOWED_ATTR: [
                     'style', 'class', 'title', 'colspan', 'rowspan',
