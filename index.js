@@ -78,6 +78,9 @@ const DEFAULT_SETTINGS = {
     windowState: null,                 // 记忆位置：{ x, y, scale }
     // 是否在酒馆欢迎页底部追加「聊天档案」快捷按钮（与 API 连接/角色管理/扩展程序 同排）
     welcomeButton: true,
+    // v0.5.14 阅读模式增强渲染开关（表格/代码块/列表/引用/AI 内联 HTML 如 <img> <p style>）
+    // 默认 ON；如果遇到大图/超长表格卡顿，可关掉退回极简模式（仅识别 *斜* **粗**）
+    readerRichRender: true,
 };
 
 function loadSettings() {
@@ -1409,6 +1412,19 @@ function mdInlineRich(s) {
 }
 function mdInline(escaped) { return mdInlineRich(escaped); } // 兼容旧调用点
 
+// 极简渲染（v0.5.14 当用户关闭「增强渲染」时使用）—— 仅 **粗** *斜*，按 \n+ 切段
+function renderLiteMd(raw) {
+    if (!raw) return '';
+    const segs = String(raw).split(/\n+/).map(s => s.trim()).filter(Boolean);
+    if (!segs.length) return '';
+    return segs.map(seg => {
+        const safe = escapeHtml(seg)
+            .replace(/\*\*([^*\n]+?)\*\*/g, '<strong>$1</strong>')
+            .replace(/(?<!\*)\*(?!\s)([^*\n]+?)(?<!\s)\*(?!\*)/g, '<em>$1</em>');
+        return `<p class="cv-msg-p">${safe}</p>`;
+    }).join('');
+}
+
 // 智能 escape：行里出现疑似 HTML tag (`<tag>` / `<tag/>` / `<tag attr=...>`) 时整段不 escape，
 // 让 AI 嵌在文字中的 <img> <span style> <u> <mark> 等能正常渲染（最终由 DOMPurify 兜底安全）；
 // 否则按原规则 escape，保护 `1 < 2` `A & B` 等纯文本不被浏览器误解析。
@@ -1738,7 +1754,10 @@ function renderReader() {
         // 把消息按段落（连续换行视作分段）拆成 <p>，单换行保留为 <br>，便于首行缩进
         // 每个非空"行"包成一段，让首行缩进对每段生效（包含连续换行产生的空行也被丢弃）
         const text = m.text
-            ? (sanitizeMd(renderRichMd(m.text)) || '<span class="cv-reader-empty">（空）</span>')
+            ? ((s.readerRichRender !== false
+                    ? sanitizeMd(renderRichMd(m.text))
+                    : renderLiteMd(m.text))
+                || '<span class="cv-reader-empty">（空）</span>')
             : '<span class="cv-reader-empty">（空）</span>';
         // user 头像：若聊天 meta 里绑定了 persona 文件名，走 /thumbnail（零附加存储）；否则首字徽章
         const userAvHtml = boundUserAvatarUrl
@@ -3570,6 +3589,15 @@ function injectSettings() {
               ${THEMES.map(t => `<option value="${t.id}" ${s.theme === t.id ? 'selected' : ''}>${t.name}</option>`).join('')}
             </select>
           </div>
+          <div class="cv-settings-row">
+            <label class="checkbox_label" for="cv_set_rich_render">
+              <input type="checkbox" id="cv_set_rich_render" ${s.readerRichRender !== false ? 'checked' : ''}>
+              <span>阅读模式增强渲染（表格 / 代码块 / 列表 / 引用 / AI 内联 HTML 如 &lt;img&gt;）</span>
+            </label>
+          </div>
+          <div class="cv-settings-hint" style="margin:-4px 0 6px; opacity:0.75;">
+            💡 关掉后仅识别 *斜体* 和 **粗体**，遇到大图 / 超长表格卡顿时可临时关闭。
+          </div>
           <hr style="border:none; border-top:1px solid var(--cv-border, rgba(127,127,127,0.25)); margin:10px 0;">
 
           <!-- 字体设置（折叠） -->
@@ -3655,6 +3683,14 @@ function injectSettings() {
         const cur = loadSettings();
         saveSettings({ ...cur, welcomeButton: !!e.target.checked });
         applyWelcomeButtonState();
+    });
+    wrap.querySelector('#cv_set_rich_render').addEventListener('change', (e) => {
+        const cur = loadSettings();
+        saveSettings({ ...cur, readerRichRender: !!e.target.checked });
+        // 若阅读模式正打开，立即重渲染当前页
+        if (typeof readerState !== 'undefined' && readerState && readerState.active) {
+            try { renderReader(); } catch {}
+        }
     });
     wrap.querySelector('#cv_set_theme').addEventListener('change', (e) => {
         const cur = loadSettings();
