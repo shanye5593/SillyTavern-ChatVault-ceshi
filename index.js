@@ -2260,7 +2260,7 @@ function mountRulesEditor(host, opts) {
                 <label class="cv-switch-row">
                     <span class="cv-switch-label">
                         通用折叠（隐藏"以下/以上是用户的本轮输入"等上下文泄漏）
-                        <code class="cv-cre-builtin-preview">/(^(?:(?:以下|以上)是用户的本轮输入|&lt;用户本轮输入&gt;)[\s\S]*$)/m</code>
+                        <code class="cv-cre-builtin-preview">${escapeHtml(BUILTIN_REGEX_FOLD.toString())}</code>
                     </span>
                     <span class="cv-switch">
                         <input type="checkbox" id="${px}_cre_builtin" ${creCfg.builtinFold !== false ? 'checked' : ''}/>
