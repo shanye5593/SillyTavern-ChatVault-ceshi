@@ -1684,6 +1684,8 @@ function readerCfg() {
     return {
         strip:   { ...DEFAULT_STRIP,   ...(cfg.strip   || {}) },
         extract: { ...DEFAULT_EXTRACT, ...(cfg.extract || {}) },
+        // v0.5.17 自定义正则：必须透出，否则 renderReader 拿到的 cfg.customRegex 是 undefined → 阅读模式正则不生效
+        customRegex: { items: [], ...(cfg.customRegex || {}) },
         userRules: {
             enabled: !!u.enabled,
             strip:   { ...DEFAULT_STRIP,   ...(u.strip   || {}) },
