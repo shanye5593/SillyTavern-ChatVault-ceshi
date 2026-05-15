@@ -4,7 +4,7 @@
  * https://github.com/shanye5593/SillyTavern-ChatVault
  */
 
-const VERSION = '0.5.10';
+const VERSION = '0.5.17';
 const STORAGE_KEY = 'st-chatvault-meta';
 const SETTINGS_KEY = 'st-chatvault-settings';
 const PAGE_SIZE = 50;
@@ -51,6 +51,9 @@ const DEFAULT_SETTINGS = {
     // 摘取规则（v0.3.14 起阅读 / 导出共用一套，从主面板卡片折叠区进入编辑）
     strip:   { ...DEFAULT_STRIP },
     extract: { ...DEFAULT_EXTRACT },
+    // v0.5.17 自定义正则（仅渲染时清洗，不修改原文件；不支持酒馆 placement / depth / 宏）
+    // items: [{ name, pattern, flags, replace, target: 'user'|'ai'|'both', enabled }]
+    customRegex: { items: [] },
     userRules: JSON.parse(JSON.stringify(DEFAULT_USER_RULES)),
     // 分页器模式: 'always' = 常驻底部, 'autoHide' = 下滑隐藏/上滑出现（同时控制悬浮按钮）
     readerPagerMode: 'autoHide',
@@ -1394,9 +1397,32 @@ function applyExtraction(text, extract) {
     return parts.join('\n\n');
 }
 
-// 完整管线：先剥离再提取
-function processMessageText(text, strip, extract) {
-    return applyExtraction(applyStripping(text, strip), extract).trim();
+// v0.5.17 自定义正则：在 strip 之后、extract 之前作用，与 strip 同性质（删除/替换）
+// items: [{ name, pattern, flags, replace, target: 'user'|'ai'|'both', enabled }]
+// target 决定是否对当前消息生效；isUser 由调用方传入；缺省 target 当 'both'
+function applyCustomRegex(text, customRegex, isUser) {
+    if (typeof text !== 'string' || !text) return text || '';
+    if (!customRegex || !Array.isArray(customRegex.items) || !customRegex.items.length) return text;
+    let out = text;
+    for (const it of customRegex.items) {
+        if (!it || it.enabled === false) continue;
+        if (typeof it.pattern !== 'string' || !it.pattern) continue;
+        const target = it.target || 'both';
+        if (target === 'user' && !isUser) continue;
+        if (target === 'ai'   &&  isUser) continue;
+        let re;
+        try { re = new RegExp(it.pattern, typeof it.flags === 'string' ? it.flags : 'g'); }
+        catch { continue; }                        // 写错的正则跳过，不炸整条消息
+        const repl = typeof it.replace === 'string' ? it.replace : '';
+        try { out = out.replace(re, repl); } catch { continue; }
+    }
+    return out.replace(/\n{3,}/g, '\n\n').trim();
+}
+
+// 完整管线：剥离 → 自定义正则 → 提取
+// customRegex / isUser 形参可选（旧调用点不传时跳过自定义正则步骤，向后兼容）
+function processMessageText(text, strip, extract, customRegex, isUser) {
+    return applyExtraction(applyCustomRegex(applyStripping(text, strip), customRegex, isUser), extract).trim();
 }
 
 // —— v0.5.11: 阅读模式 markdown 渲染（套餐 A + DOMPurify HTML 直通）——
@@ -1722,8 +1748,9 @@ function renderReader() {
         ? `/thumbnail?type=persona&file=${encodeURIComponent(boundUserAvatarFile)}`
         : '';
 
-    // 处理 + 缓存（依赖 strip/extract/userRules 配置，不含 style）
-    const cfgSig = JSON.stringify({ s: cfg.strip, e: cfg.extract, u: cfg.userRules });
+    // 处理 + 缓存（依赖 strip/extract/userRules/customRegex 配置，不含 style）
+    // v0.5.17: cfgSig 纳入 customRegex，否则改了正则不会重算缓存
+    const cfgSig = JSON.stringify({ s: cfg.strip, e: cfg.extract, u: cfg.userRules, r: cfg.customRegex });
     if (readerState._cfgSig !== cfgSig || !readerState._processed) {
         readerState._cfgSig = cfgSig;
         readerState._processed = messages.map((m, idx) => {
@@ -1731,7 +1758,7 @@ function renderReader() {
             const useUser = cfg.userRules.enabled && isUser;
             const s = useUser ? cfg.userRules.strip : cfg.strip;
             const e = useUser ? cfg.userRules.extract : cfg.extract;
-            const text = (m && typeof m.mes === 'string') ? processMessageText(m.mes, s, e) : '';
+            const text = (m && typeof m.mes === 'string') ? processMessageText(m.mes, s, e, cfg.customRegex, isUser) : '';
             // user 名字优先用消息自身记录的 m.name（兼容多 persona 聊天），否则用文件级 userName
             const rawName = m?.name && m.name !== 'unused' ? m.name : '';
             const who = isUser ? (rawName || userName) : (rawName || charName);
@@ -2169,6 +2196,21 @@ function mountRulesEditor(host, opts) {
             <div id="${px}_e_list"></div>
             <button class="cv-btn cv-strip-add" id="${px}_e_add" type="button">+ 添加</button>
         </div>
+        <div class="cv-strip-box cv-cre-box" data-collapsed="1">
+            <div class="cv-strip-title cv-bm-toggle" id="${px}_cre_toggle">
+                <span class="cv-bm-title-label"><span>自定义正则（仅渲染清洗）</span></span>
+                <span class="cv-bm-chev">▾</span>
+            </div>
+            <div class="cv-cre-body" id="${px}_cre_body" hidden>
+                <div class="cv-field-hint">仅作用于阅读模式与 txt 导出，不修改原文件。不支持酒馆宏与位置/深度限制；上传酒馆 JSON 时这些字段会被忽略。</div>
+                <div id="${px}_cre_list"></div>
+                <div class="cv-cre-actions">
+                    <button class="cv-btn cv-strip-add" id="${px}_cre_add" type="button">+ 创建</button>
+                    <button class="cv-btn cv-strip-add" id="${px}_cre_upload_btn" type="button">↑ 上传 JSON</button>
+                    <input type="file" id="${px}_cre_upload" accept=".json,application/json" multiple hidden/>
+                </div>
+            </div>
+        </div>
         <div class="cv-strip-box cv-user-rules-box">
             <label class="cv-switch-row">
                 <span class="cv-switch-label"><b>user 消息单独规则</b></span>
@@ -2255,6 +2297,192 @@ function mountRulesEditor(host, opts) {
     renderList(`${px}_e_list`,  `${px}_e_add`,  extractPath,              false);
     renderList(`${px}_us_list`, `${px}_us_add`, [...userPath, 'strip'],   true);
     renderList(`${px}_ue_list`, `${px}_ue_add`, [...userPath, 'extract'], false);
+
+    // —— v0.5.17 自定义正则：列表渲染 + 创建 + 上传 ——
+    const mutateCRE = (mut) => {
+        const c = JSON.parse(JSON.stringify(loadSettings()));
+        const cur = { items: [], ...(c.customRegex || {}) };
+        cur.items = Array.isArray(cur.items) ? cur.items.slice() : [];
+        mut(cur);
+        c.customRegex = cur;
+        saveSettings(c);
+    };
+    const validRegex = (p, f) => { try { new RegExp(p, f || 'g'); return true; } catch { return false; } };
+    // 解析酒馆正则 JSON（单条对象）→ 我们的简化结构；忽略 placement/depth/macros 等
+    function parseSillyTavernRegex(raw) {
+        if (!raw || typeof raw !== 'object') return null;
+        const findRegex = typeof raw.findRegex === 'string' ? raw.findRegex : '';
+        if (!findRegex) return null;
+        // 形如 "/pattern/flags" → 拆出 pattern + flags（兼容裸 pattern）
+        let pattern = findRegex, flags = 'g';
+        const m = /^\/((?:\\.|[^\\\/])+)\/([gimsuy]*)$/.exec(findRegex);
+        if (m) { pattern = m[1]; flags = m[2] || 'g'; }
+        const replace = typeof raw.replaceString === 'string' ? raw.replaceString : '';
+        const name = typeof raw.scriptName === 'string' ? raw.scriptName : '';
+        // placement: 1=user input, 2=AI output；其他（slash/world/reasoning）我们不支持
+        const placement = Array.isArray(raw.placement) ? raw.placement : [];
+        const hasUser = placement.includes(1);
+        const hasAI   = placement.includes(2);
+        let target = 'both';
+        if (hasUser && !hasAI) target = 'user';
+        else if (hasAI && !hasUser) target = 'ai';
+        let enabled = !raw.disabled;
+        const suspectMacro = /\{\{[^}]+\}\}/.test(replace);
+        if (suspectMacro) enabled = false;
+        if (placement.length && !hasUser && !hasAI) enabled = false;
+        let nm = name;
+        if (suspectMacro) nm = '⚠ ' + (name || '含酒馆宏');
+        else if (placement.length && !hasUser && !hasAI) nm = '⚠ ' + (name || '原仅作用于不支持的范围');
+        return { name: nm, pattern, flags, replace, target, enabled };
+    }
+    const renderCRE = () => {
+        const list = host.querySelector('#' + px + '_cre_list');
+        if (!list) return;
+        const cur = ((loadSettings().customRegex) || {}).items || [];
+        if (!cur.length) { list.innerHTML = '<div class="cv-field-hint">（暂无）</div>'; return; }
+        list.innerHTML = cur.map((it, i) => {
+            const enabled = it.enabled !== false;
+            const valid = validRegex(it.pattern || '', it.flags || 'g');
+            const labelText = it.name || it.pattern || '(未命名)';
+            const tgt = it.target === 'user' ? 'user' : it.target === 'ai' ? 'AI' : '全部';
+            return `
+            <div class="cv-cre-row" data-i="${i}" data-collapsed="1">
+                <div class="cv-cre-head">
+                    <label class="cv-switch cv-cre-en" title="启用">
+                        <input type="checkbox" class="cv-cre-en-i" ${enabled?'checked':''}/>
+                        <span class="cv-switch-track"><span class="cv-switch-thumb"></span></span>
+                    </label>
+                    <span class="cv-cre-name ${valid?'':'is-bad'}">${escapeHtml(labelText)}</span>
+                    <span class="cv-cre-tgt">${tgt}</span>
+                    <button class="cv-cre-toggle" type="button" title="展开/收起">▾</button>
+                    <button class="cv-strip-del cv-cre-del" type="button" title="删除">×</button>
+                </div>
+                <div class="cv-cre-body-row" hidden>
+                    <label class="cv-cre-label">名称<input type="text" class="cv-cre-fname" placeholder="（可选）" value="${escapeHtml(it.name || '')}"/></label>
+                    <label class="cv-cre-label">查找正则<input type="text" class="cv-cre-fpattern" placeholder="不要写两边的斜杠和 flags" value="${escapeHtml(it.pattern || '')}"/></label>
+                    <label class="cv-cre-label">修饰符<input type="text" class="cv-cre-fflags" placeholder="g / gi / gm" value="${escapeHtml(it.flags || 'g')}"/></label>
+                    <label class="cv-cre-label">替换为<input type="text" class="cv-cre-frep" placeholder="留空 = 删除" value="${escapeHtml(it.replace || '')}"/></label>
+                    <div class="cv-cre-target">
+                        <span class="cv-cre-label-inline">作用对象</span>
+                        <label><input type="radio" name="${px}_cre_t_${i}" value="both" ${(!it.target||it.target==='both')?'checked':''}/> 全部</label>
+                        <label><input type="radio" name="${px}_cre_t_${i}" value="user" ${it.target==='user'?'checked':''}/> 仅 user</label>
+                        <label><input type="radio" name="${px}_cre_t_${i}" value="ai" ${it.target==='ai'?'checked':''}/> 仅 AI</label>
+                    </div>
+                    <div class="cv-cre-err" ${valid?'hidden':''}>正则语法错误，已跳过此条</div>
+                </div>
+            </div>`;
+        }).join('');
+        list.querySelectorAll('.cv-cre-row').forEach(row => {
+            const i = Number(row.dataset.i);
+            const head = row.querySelector('.cv-cre-head');
+            const body = row.querySelector('.cv-cre-body-row');
+            const tog  = row.querySelector('.cv-cre-toggle');
+            const expand = (open) => {
+                row.dataset.collapsed = open ? '0' : '1';
+                body.hidden = !open;
+                tog.textContent = open ? '▴' : '▾';
+            };
+            head.addEventListener('click', (e) => {
+                if (e.target.closest('.cv-cre-en, .cv-cre-del, input, label')) return;
+                expand(row.dataset.collapsed !== '0');
+            });
+            tog.onclick = (e) => { e.stopPropagation(); expand(row.dataset.collapsed !== '0'); };
+            // 启用开关
+            const enInp = row.querySelector('.cv-cre-en-i');
+            enInp.onchange = () => { mutateCRE(c => { if (c.items[i]) c.items[i].enabled = enInp.checked; }); repaint(); };
+            // 字段：oninput 只存、blur 才 repaint（与自定义剥离对相同模式，避免输入时父节点重渲毁焦/中文输入法关闭）
+            const nm = row.querySelector('.cv-cre-fname');
+            const pt = row.querySelector('.cv-cre-fpattern');
+            const fl = row.querySelector('.cv-cre-fflags');
+            const rp = row.querySelector('.cv-cre-frep');
+            const errEl = row.querySelector('.cv-cre-err');
+            const saveOnly = () => mutateCRE(c => {
+                if (!c.items[i]) return;
+                c.items[i] = { ...c.items[i], name: nm.value, pattern: pt.value, flags: fl.value || 'g', replace: rp.value };
+            });
+            const refreshErr = () => {
+                const ok = validRegex(pt.value, fl.value || 'g');
+                errEl.hidden = ok;
+                pt.classList.toggle('is-bad', !ok);
+            };
+            let focusVal = '';
+            [nm, pt, fl, rp].forEach(el => {
+                el.oninput = () => { saveOnly(); if (el === pt || el === fl) refreshErr(); };
+                el.onfocus = () => { focusVal = el.value; };
+                el.onblur  = () => { if (el.value !== focusVal) setTimeout(repaint, 0); };
+            });
+            // 作用对象
+            row.querySelectorAll(`input[name="${px}_cre_t_${i}"]`).forEach(r => {
+                r.onchange = () => {
+                    if (!r.checked) return;
+                    mutateCRE(c => { if (c.items[i]) c.items[i].target = r.value; });
+                    repaint();
+                };
+            });
+            // 删除
+            row.querySelector('.cv-cre-del').onclick = (e) => {
+                e.stopPropagation();
+                mutateCRE(c => { c.items = c.items.filter((_, k) => k !== i); });
+                renderCRE(); repaint();
+            };
+        });
+    };
+    renderCRE();
+    // 折叠交互（box 标题点击开合）
+    const creToggle = host.querySelector('#' + px + '_cre_toggle');
+    const creBody   = host.querySelector('#' + px + '_cre_body');
+    const creBox    = creToggle && creToggle.closest('.cv-cre-box');
+    if (creToggle && creBody && creBox) creToggle.onclick = () => {
+        const collapsed = creBox.getAttribute('data-collapsed') !== '0';
+        creBox.setAttribute('data-collapsed', collapsed ? '0' : '1');
+        creBody.hidden = !collapsed;
+    };
+    // + 创建
+    const creAddBtn = host.querySelector('#' + px + '_cre_add');
+    if (creAddBtn) creAddBtn.onclick = () => {
+        mutateCRE(c => { c.items = [...c.items, { name:'', pattern:'', flags:'g', replace:'', target:'both', enabled:true }]; });
+        if (creBox) { creBox.setAttribute('data-collapsed','0'); if (creBody) creBody.hidden = false; }
+        renderCRE();
+        // 自动展开新行 + 聚焦 pattern
+        const rows = host.querySelectorAll('.cv-cre-row');
+        const lastRow = rows[rows.length - 1];
+        if (lastRow) {
+            lastRow.dataset.collapsed = '0';
+            const lb = lastRow.querySelector('.cv-cre-body-row');
+            if (lb) lb.hidden = false;
+            const ltog = lastRow.querySelector('.cv-cre-toggle'); if (ltog) ltog.textContent = '▴';
+            const ip = lastRow.querySelector('.cv-cre-fpattern'); if (ip) ip.focus();
+        }
+    };
+    // ↑ 上传 JSON（接受单条 / 数组 / 多文件）
+    const upBtn = host.querySelector('#' + px + '_cre_upload_btn');
+    const upInp = host.querySelector('#' + px + '_cre_upload');
+    if (upBtn && upInp) {
+        upBtn.onclick = () => upInp.click();
+        upInp.onchange = async () => {
+            const files = Array.from(upInp.files || []);
+            upInp.value = '';
+            if (!files.length) return;
+            const parsed = []; const skipped = [];
+            for (const f of files) {
+                try {
+                    const data = JSON.parse(await f.text());
+                    const arr = Array.isArray(data) ? data : [data];
+                    for (const r of arr) {
+                        const mapped = parseSillyTavernRegex(r);
+                        if (mapped) parsed.push(mapped); else skipped.push(f.name);
+                    }
+                } catch { skipped.push(f.name + '（解析失败）'); }
+            }
+            if (parsed.length) {
+                mutateCRE(c => { c.items = [...c.items, ...parsed]; });
+                if (creBox) { creBox.setAttribute('data-collapsed','0'); if (creBody) creBody.hidden = false; }
+                renderCRE(); repaint();
+            }
+            const msg = `导入 ${parsed.length} 条` + (skipped.length ? `；跳过 ${skipped.length} 处：${[...new Set(skipped)].slice(0,3).join(', ')}` : '');
+            try { toastr.info(msg); } catch { setStatus(msg); }
+        };
+    }
 
     // —— 开关组 ——
     const flagMap = [
@@ -2743,7 +2971,7 @@ async function exportChatTxt(character, fileName) {
             const who = isUser
                 ? (m.name && m.name !== 'unused' ? m.name : userName)
                 : (m.name || charName);
-            const cleaned = processMessageText(m.mes, s, e);
+            const cleaned = processMessageText(m.mes, s, e, cfg.customRegex, isUser);
             if (!cleaned) continue;
             lines.push(`【${who}】`);
             lines.push(cleaned);
@@ -3007,13 +3235,15 @@ function openRulesModal() {
     document.getElementById('chatvault_panel').appendChild(wrap);
     document.getElementById('cv_rules_close').onclick = closeModal;
     document.getElementById('cv_rules_done').onclick = closeModal;
-    // 独立 modal：repaint 留空，规则改动不会触发任何外部 DOM 重渲染
+    // v0.5.17: repaint 改为真重渲染 —— 自定义正则等改动需要立刻反映到主列表/阅读器
+    // render() 内部判断：阅读模式走 renderReader（cfgSig 变了重算），主列表重画卡片
+    // modal 在 chatvault_panel 子节点而非 cv_body，render 不会误关 modal
     mountRulesEditor(document.getElementById('cv_rules_holder'), {
         prefix: 'cv_rules',
         stripPath: ['strip'],
         extractPath: ['extract'],
         userPath: ['userRules'],
-        repaint: () => {},
+        repaint: () => render(),
     });
 }
 

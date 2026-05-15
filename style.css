@@ -2239,3 +2239,82 @@
     padding: 0 0 4px;
     margin-top: 0;
 }
+
+/* ============================================================
+ * v0.5.17 自定义正则
+ * ============================================================ */
+.cv-cre-box .cv-bm-toggle {
+    cursor: pointer;
+    display: flex !important;
+    align-items: center;
+    justify-content: space-between;
+    user-select: none;
+    margin-bottom: 0;
+}
+.cv-cre-box[data-collapsed="0"] .cv-bm-chev { transform: rotate(180deg); }
+.cv-cre-body { display: flex; flex-direction: column; gap: 8px; padding-top: 6px; }
+.cv-cre-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.cv-cre-row {
+    border: 1px solid var(--cv-border);
+    border-radius: 6px;
+    background: var(--cv-bg-card);
+    overflow: hidden;
+}
+.cv-cre-head {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 8px;
+    cursor: pointer;
+}
+.cv-cre-head .cv-cre-en { flex: 0 0 auto; }
+.cv-cre-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+}
+.cv-cre-name.is-bad { color: #e57373; }
+.cv-cre-tgt {
+    flex: 0 0 auto;
+    font-size: 11px;
+    opacity: .55;
+    padding: 1px 6px;
+    border: 1px solid var(--cv-border);
+    border-radius: 3px;
+}
+.cv-cre-toggle, .cv-cre-del {
+    flex: 0 0 auto;
+    background: transparent;
+    border: 1px solid var(--cv-border);
+    color: var(--cv-text);
+    border-radius: 4px;
+    width: 26px; height: 26px;
+    cursor: pointer;
+    font-size: 14px;
+}
+.cv-cre-toggle:hover, .cv-cre-del:hover { background: var(--cv-accent-muted); }
+.cv-cre-body-row {
+    display: flex; flex-direction: column; gap: 6px;
+    padding: 8px 10px 10px;
+    border-top: 1px dashed var(--cv-border);
+}
+.cv-cre-label {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 12px; opacity: .8;
+}
+.cv-cre-label input[type="text"] {
+    flex: 1 1 auto;
+    background: var(--cv-bg-panel);
+    color: var(--cv-text);
+    border: 1px solid var(--cv-border);
+    border-radius: 4px;
+    padding: 4px 6px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+}
+.cv-cre-label input.is-bad { border-color: #e57373; }
+.cv-cre-target { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 12px; }
+.cv-cre-target label { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.cv-cre-label-inline { opacity: .8; }
+.cv-cre-err { color: #e57373; font-size: 11px; }
