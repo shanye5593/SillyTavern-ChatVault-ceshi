@@ -4,7 +4,7 @@
  * https://github.com/shanye5593/SillyTavern-ChatVault
  */
 
-const VERSION = '0.5.18';
+const VERSION = '0.5.19';
 const STORAGE_KEY = 'st-chatvault-meta';
 const SETTINGS_KEY = 'st-chatvault-settings';
 const PAGE_SIZE = 50;
@@ -2226,36 +2226,27 @@ function mountRulesEditor(host, opts) {
                 <button class="cv-btn cv-strip-add" id="${px}_e_add" type="button">+ 添加</button>
             </div>
         </div>
-        <div class="cv-strip-box cv-fold-box cv-user-rules-box" data-collapsed="1">
+        <div class="cv-strip-box cv-fold-box cv-user-rules-box" data-collapsed="${userR.enabled?'0':'1'}">
             <div class="cv-strip-title cv-fold-toggle">
                 <span class="cv-bm-title-label"><span>user 消息单独规则</span></span>
                 <span class="cv-bm-chev">▾</span>
             </div>
-            <div class="cv-fold-body" hidden>
-                <label class="cv-switch-row">
-                    <span class="cv-switch-label"><b>启用</b></span>
-                    <span class="cv-switch">
-                        <input type="checkbox" id="${px}_u_enabled" ${userR.enabled?'checked':''}/>
-                        <span class="cv-switch-track"><span class="cv-switch-thumb"></span></span>
-                    </span>
-                </label>
-                <div class="cv-field-hint">开启后，user 消息按下面这组规则处理（覆盖默认规则）。</div>
-                <div class="cv-user-rules-body" ${userR.enabled?'':'hidden'}>
-                    <div class="cv-strip-subbox">
-                        <div class="cv-strip-subtitle">user · 剥离</div>
-                        ${sw(`${px}_us_recall`,     ustrip.recall,     '&lt;recall&gt;…&lt;/recall&gt;')}
-                        ${sw(`${px}_us_supplement`, ustrip.supplement, '&lt;supplement&gt;…&lt;/supplement&gt;')}
-                        <div class="cv-strip-custom-title">自定义剥离对</div>
-                        <div id="${px}_us_list"></div>
-                        <button class="cv-btn cv-strip-add" id="${px}_us_add" type="button">+ 添加</button>
-                    </div>
-                    <div class="cv-strip-subbox">
-                        <div class="cv-strip-subtitle">user · 提取</div>
-                        ${sw(`${px}_ue_userInput`, uextract.userInput, '&lt;本轮用户输入&gt;…&lt;/本轮用户输入&gt;')}
-                        <div class="cv-strip-custom-title">自定义提取对</div>
-                        <div id="${px}_ue_list"></div>
-                        <button class="cv-btn cv-strip-add" id="${px}_ue_add" type="button">+ 添加</button>
-                    </div>
+            <div class="cv-fold-body" ${userR.enabled?'':'hidden'}>
+                <div class="cv-field-hint">user 消息按下面这组规则处理（覆盖默认规则）。展开此区块即启用，收起即停用。</div>
+                <div class="cv-strip-subbox">
+                    <div class="cv-strip-subtitle">user · 剥离</div>
+                    ${sw(`${px}_us_recall`,     ustrip.recall,     '&lt;recall&gt;…&lt;/recall&gt;')}
+                    ${sw(`${px}_us_supplement`, ustrip.supplement, '&lt;supplement&gt;…&lt;/supplement&gt;')}
+                    <div class="cv-strip-custom-title">自定义剥离对</div>
+                    <div id="${px}_us_list"></div>
+                    <button class="cv-btn cv-strip-add" id="${px}_us_add" type="button">+ 添加</button>
+                </div>
+                <div class="cv-strip-subbox">
+                    <div class="cv-strip-subtitle">user · 提取</div>
+                    ${sw(`${px}_ue_userInput`, uextract.userInput, '&lt;本轮用户输入&gt;…&lt;/本轮用户输入&gt;')}
+                    <div class="cv-strip-custom-title">自定义提取对</div>
+                    <div id="${px}_ue_list"></div>
+                    <button class="cv-btn cv-strip-add" id="${px}_ue_add" type="button">+ 添加</button>
                 </div>
             </div>
         </div>
@@ -2267,7 +2258,10 @@ function mountRulesEditor(host, opts) {
             <div class="cv-fold-body" hidden>
                 <div class="cv-field-hint">仅作用于阅读模式与 txt 导出，不修改原文件。不支持酒馆宏与位置/深度限制；上传酒馆 JSON 时这些字段会被忽略。</div>
                 <label class="cv-switch-row">
-                    <span class="cv-switch-label">通用折叠（隐藏"以下/以上是用户的本轮输入"等上下文泄漏）</span>
+                    <span class="cv-switch-label">
+                        通用折叠（隐藏"以下/以上是用户的本轮输入"等上下文泄漏）
+                        <code class="cv-cre-builtin-preview">/(^(?:(?:以下|以上)是用户的本轮输入|&lt;用户本轮输入&gt;)[\s\S]*$)/m</code>
+                    </span>
                     <span class="cv-switch">
                         <input type="checkbox" id="${px}_cre_builtin" ${creCfg.builtinFold !== false ? 'checked' : ''}/>
                         <span class="cv-switch-track"><span class="cv-switch-thumb"></span></span>
@@ -2284,18 +2278,27 @@ function mountRulesEditor(host, opts) {
     `;
 
     // v0.5.18 折叠区委托 handler（一次绑定，覆盖所有 .cv-fold-toggle）
-    // 用 capture=false + 合成 click，避免吞掉内部按钮/开关的事件
+    // v0.5.19: user 独立规则区块的"展开/收起"绑定到 userRules.enabled —— 单独"启用"开关删了
     host.addEventListener('click', (e) => {
         const t = e.target.closest('.cv-fold-toggle');
         if (!t || !host.contains(t)) return;
-        // 标题里嵌的 "!" 信息按钮等，不触发折叠
         if (e.target.closest('.cv-info-btn')) return;
         const box = t.closest('.cv-fold-box');
         if (!box) return;
         const body = box.querySelector(':scope > .cv-fold-body');
-        const collapsed = box.getAttribute('data-collapsed') !== '0';
-        box.setAttribute('data-collapsed', collapsed ? '0' : '1');
-        if (body) body.hidden = !collapsed;
+        const wasCollapsed = box.getAttribute('data-collapsed') !== '0';
+        const willOpen = wasCollapsed;
+        box.setAttribute('data-collapsed', willOpen ? '0' : '1');
+        if (body) body.hidden = !willOpen;
+        // user 独立规则：折叠态 = 启用态
+        if (box.classList.contains('cv-user-rules-box')) {
+            const c = JSON.parse(JSON.stringify(loadSettings()));
+            const cur = { ...DEFAULT_USER_RULES, ...(getAt(c, userPath) || {}) };
+            cur.enabled = willOpen;
+            setAt(c, userPath, cur);
+            saveSettings(c);
+            repaint();
+        }
     });
 
     // v0.5.18 内置「通用折叠」开关
@@ -2588,18 +2591,7 @@ function mountRulesEditor(host, opts) {
         };
     });
 
-    // user 总开关
-    const userToggle = host.querySelector('#' + px + '_u_enabled');
-    if (userToggle) userToggle.onchange = () => {
-        const c = JSON.parse(JSON.stringify(loadSettings()));
-        const cur = { ...DEFAULT_USER_RULES, ...(getAt(c, userPath) || {}) };
-        cur.enabled = userToggle.checked;
-        setAt(c, userPath, cur);
-        saveSettings(c);
-        const body = host.querySelector('.cv-user-rules-body');
-        if (body) body.hidden = !userToggle.checked;
-        repaint();
-    };
+    // v0.5.19: user 独立规则总开关已删除 —— 折叠状态本身即启用状态（见委托 handler）
 
     // 提取说明气泡
     const eInfo = host.querySelector('#' + px + '_e_info');

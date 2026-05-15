@@ -2335,3 +2335,23 @@
     gap: 6px;
     padding-top: 8px;
 }
+
+/* v0.5.19 修：[hidden] 被 .cv-fold-body { display: flex } 覆盖了，必须显式覆盖回去 */
+.cv-fold-body[hidden] { display: none !important; }
+.cv-cre-body-row[hidden] { display: none !important; }
+
+/* v0.5.19 内置正则预览代码块 */
+.cv-cre-builtin-preview {
+    display: block;
+    margin-top: 4px;
+    padding: 4px 6px;
+    background: var(--cv-bg-panel, rgba(0,0,0,0.2));
+    border: 1px solid var(--cv-border);
+    border-radius: 4px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 11px;
+    color: var(--cv-text-secondary, inherit);
+    opacity: .75;
+    word-break: break-all;
+    user-select: text;
+}
