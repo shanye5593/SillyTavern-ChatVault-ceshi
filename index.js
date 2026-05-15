@@ -4,7 +4,7 @@
  * https://github.com/shanye5593/SillyTavern-ChatVault
  */
 
-const VERSION = '0.5.19';
+const VERSION = '0.5.20';
 const STORAGE_KEY = 'st-chatvault-meta';
 const SETTINGS_KEY = 'st-chatvault-settings';
 const PAGE_SIZE = 50;
@@ -2193,10 +2193,11 @@ function mountRulesEditor(host, opts) {
     host.innerHTML = `
         <div class="cv-strip-box cv-fold-box" data-collapsed="1">
             <div class="cv-strip-title cv-fold-toggle">
-                <span class="cv-bm-title-label"><span>剥离（默认 · 适用于 AI / 角色消息）</span></span>
+                <span class="cv-bm-title-label"><span>剥离</span></span>
                 <span class="cv-bm-chev">▾</span>
             </div>
             <div class="cv-fold-body" hidden>
+                <div class="cv-field-hint">默认规则 · 适用于 AI / 角色消息（user 消息走"user 单独规则"）</div>
                 ${sw(`${px}_s_thinking`, strip.thinking,    '&lt;thinking&gt;…&lt;/thinking&gt;')}
                 ${sw(`${px}_s_think`,    strip.think,       '&lt;think&gt;…&lt;/think&gt;')}
                 ${sw(`${px}_s_html`,     strip.htmlComment, 'HTML 注释')}
@@ -2209,11 +2210,12 @@ function mountRulesEditor(host, opts) {
         </div>
         <div class="cv-strip-box cv-fold-box" data-collapsed="1">
             <div class="cv-strip-title cv-fold-toggle">
-                <span class="cv-bm-title-label"><span>提取（只保留这些标签内的内容）</span><button class="cv-info-btn" type="button" id="${px}_e_info" title="点击查看说明">!</button></span>
+                <span class="cv-bm-title-label"><span>提取</span></span>
                 <span class="cv-bm-chev">▾</span>
             </div>
             <div class="cv-fold-body" hidden>
-                <div class="cv-info-tip" id="${px}_e_info_tip" hidden>
+                <div class="cv-field-hint">只保留这些标签内的内容</div>
+                <div class="cv-info-tip">
                     <b>提取功能注意</b>：开启后，正文必须被对应标签完整包裹（例：<code>&lt;content&gt;…&lt;/content&gt;</code>），否则——<br>
                     · 如果原文没有用对应标签包裹正文，该消息将显示为空；<br>
                     · 如果包裹错误（标签未闭合），同样为空。<br>
@@ -2279,10 +2281,10 @@ function mountRulesEditor(host, opts) {
 
     // v0.5.18 折叠区委托 handler（一次绑定，覆盖所有 .cv-fold-toggle）
     // v0.5.19: user 独立规则区块的"展开/收起"绑定到 userRules.enabled —— 单独"启用"开关删了
+    // v0.5.20: 标题里不再嵌 "!" 信息按钮（与 fold 触控重叠），说明文案直接平铺到 body
     host.addEventListener('click', (e) => {
         const t = e.target.closest('.cv-fold-toggle');
         if (!t || !host.contains(t)) return;
-        if (e.target.closest('.cv-info-btn')) return;
         const box = t.closest('.cv-fold-box');
         if (!box) return;
         const body = box.querySelector(':scope > .cv-fold-body');
@@ -2593,10 +2595,7 @@ function mountRulesEditor(host, opts) {
 
     // v0.5.19: user 独立规则总开关已删除 —— 折叠状态本身即启用状态（见委托 handler）
 
-    // 提取说明气泡
-    const eInfo = host.querySelector('#' + px + '_e_info');
-    const eTip  = host.querySelector('#' + px + '_e_info_tip');
-    if (eInfo && eTip) eInfo.onclick = () => { eTip.hidden = !eTip.hidden; };
+    // v0.5.20: 提取说明已平铺为常驻 .cv-info-tip，无需 toggle handler
 }
 
 function renderReaderSettings(panel) {
