@@ -4,7 +4,7 @@
  * https://github.com/shanye5593/SillyTavern-ChatVault
  */
 
-const VERSION = '0.5.20';
+const VERSION = '0.5.21';
 const STORAGE_KEY = 'st-chatvault-meta';
 const SETTINGS_KEY = 'st-chatvault-settings';
 const PAGE_SIZE = 50;
@@ -1774,7 +1774,8 @@ function renderReader() {
         readerState._cfgSig = cfgSig;
         readerState._processed = messages.map((m, idx) => {
             const isUser = !!m?.is_user;
-            const useUser = cfg.userRules.enabled && isUser;
+            // v0.5.21: user 单独规则始终生效（用户配置的 user · 剥离/提取 即是其意图）
+            const useUser = isUser;
             const s = useUser ? cfg.userRules.strip : cfg.strip;
             const e = useUser ? cfg.userRules.extract : cfg.extract;
             const text = (m && typeof m.mes === 'string') ? processMessageText(m.mes, s, e, cfg.customRegex, isUser) : '';
@@ -2228,13 +2229,13 @@ function mountRulesEditor(host, opts) {
                 <button class="cv-btn cv-strip-add" id="${px}_e_add" type="button">+ 添加</button>
             </div>
         </div>
-        <div class="cv-strip-box cv-fold-box cv-user-rules-box" data-collapsed="${userR.enabled?'0':'1'}">
+        <div class="cv-strip-box cv-fold-box cv-user-rules-box" data-collapsed="1">
             <div class="cv-strip-title cv-fold-toggle">
                 <span class="cv-bm-title-label"><span>user 消息单独规则</span></span>
                 <span class="cv-bm-chev">▾</span>
             </div>
-            <div class="cv-fold-body" ${userR.enabled?'':'hidden'}>
-                <div class="cv-field-hint">user 消息按下面这组规则处理（覆盖默认规则）。展开此区块即启用，收起即停用。</div>
+            <div class="cv-fold-body" hidden>
+                <div class="cv-field-hint">user 消息使用下面这组规则（覆盖上方默认规则）</div>
                 <div class="cv-strip-subbox">
                     <div class="cv-strip-subtitle">user · 剥离</div>
                     ${sw(`${px}_us_recall`,     ustrip.recall,     '&lt;recall&gt;…&lt;/recall&gt;')}
@@ -2280,8 +2281,7 @@ function mountRulesEditor(host, opts) {
     `;
 
     // v0.5.18 折叠区委托 handler（一次绑定，覆盖所有 .cv-fold-toggle）
-    // v0.5.19: user 独立规则区块的"展开/收起"绑定到 userRules.enabled —— 单独"启用"开关删了
-    // v0.5.20: 标题里不再嵌 "!" 信息按钮（与 fold 触控重叠），说明文案直接平铺到 body
+    // v0.5.21: 折叠纯视觉，不再绑定任何启用态。user 单独规则始终生效（见 readerCfg / 导出处的 useUser）
     host.addEventListener('click', (e) => {
         const t = e.target.closest('.cv-fold-toggle');
         if (!t || !host.contains(t)) return;
@@ -2292,15 +2292,6 @@ function mountRulesEditor(host, opts) {
         const willOpen = wasCollapsed;
         box.setAttribute('data-collapsed', willOpen ? '0' : '1');
         if (body) body.hidden = !willOpen;
-        // user 独立规则：折叠态 = 启用态
-        if (box.classList.contains('cv-user-rules-box')) {
-            const c = JSON.parse(JSON.stringify(loadSettings()));
-            const cur = { ...DEFAULT_USER_RULES, ...(getAt(c, userPath) || {}) };
-            cur.enabled = willOpen;
-            setAt(c, userPath, cur);
-            saveSettings(c);
-            repaint();
-        }
     });
 
     // v0.5.18 内置「通用折叠」开关
@@ -3038,7 +3029,8 @@ async function exportChatTxt(character, fileName) {
             const m = arr[i];
             if (!m || typeof m.mes !== 'string') continue;
             const isUser = !!m.is_user;
-            const useUser = u.enabled && isUser;
+            // v0.5.21: user 单独规则始终生效（与阅读模式一致）
+            const useUser = isUser;
             const s = useUser ? ustrip   : strip;
             const e = useUser ? uextract : extract;
             const who = isUser
