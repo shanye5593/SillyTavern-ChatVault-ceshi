@@ -3109,13 +3109,15 @@ function openRulesModal() {
     document.getElementById('chatvault_panel').appendChild(wrap);
     document.getElementById('cv_rules_close').onclick = closeModal;
     document.getElementById('cv_rules_done').onclick = closeModal;
-    // 独立 modal：repaint 留空，规则改动不会触发任何外部 DOM 重渲染
+    // v0.5.17-fix2: repaint 改为真重渲染 —— 此前为 noop，结果改 mask/规则后预览/阅读器都不会立刻反映
+    // render() 内部自动判断：在阅读模式下走 renderReader（cfgSig 变了会重算 mask），
+    // 在主列表会重画卡片 → observePreviews 重挂 → 缓存命中分支也会跑 applyMask → 立刻可见
     mountRulesEditor(document.getElementById('cv_rules_holder'), {
         prefix: 'cv_rules',
         stripPath: ['strip'],
         extractPath: ['extract'],
         userPath: ['userRules'],
-        repaint: () => {},
+        repaint: () => render(),
     });
 }
 
