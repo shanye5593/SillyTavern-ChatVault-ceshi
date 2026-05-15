@@ -4,7 +4,7 @@
  * https://github.com/shanye5593/SillyTavern-ChatVault
  */
 
-const VERSION = '0.5.23';
+const VERSION = '0.5.24';
 const STORAGE_KEY = 'st-chatvault-meta';
 const SETTINGS_KEY = 'st-chatvault-settings';
 const PAGE_SIZE = 50;
@@ -117,7 +117,13 @@ function loadSettings() {
     }
 }
 function saveSettings(s) {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+    // v0.5.24: 容错——配额耗尽 / Safari 隐私模式等场景不要让整条交互链断掉
+    try {
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+    } catch (e) {
+        console.error('[ChatVault] 设置保存失败（可能是存储配额已满）', e);
+        try { toastr.error('设置保存失败：浏览器存储已满或被禁用'); } catch {}
+    }
 }
 function currentThemeClass() {
     const id = loadSettings().theme;
@@ -831,8 +837,9 @@ async function loadAll() {
     } catch (e) {
         console.error('[ChatVault] 加载失败', e);
         setStatus(`❌ 加载失败: ${e.message}`);
-        document.getElementById('cv_body').innerHTML =
-            `<div class="cv-empty">加载失败：${escapeHtml(e.message)}</div>`;
+        // v0.5.24: 加载失败回调可能在面板已关闭后才触发，此时 cv_body 不存在，要判空
+        const body = document.getElementById('cv_body');
+        if (body) body.innerHTML = `<div class="cv-empty">加载失败：${escapeHtml(e.message)}</div>`;
     }
 }
 
@@ -1420,9 +1427,17 @@ function applyCustomRegex(text, customRegex, isUser) {
     if (!Array.isArray(customRegex.items) || !customRegex.items.length) {
         return out === text ? text : out.replace(/\n{3,}/g, '\n\n').trim();
     }
+    // v0.5.24: ReDoS 护栏。JS 单线程无法真正给同步 regex 加超时，只能缩攻击面：
+    //   · pattern 单条上限 1000 字符（正常用户写不到）
+    //   · 单条消息正文超过 500KB 直接跳过自定义正则（保留剥离/提取/builtin）
+    //   · 启用条数硬上限 50（防被诱导导入巨型 JSON）
+    if (out.length > 500_000) return out.replace(/\n{3,}/g, '\n\n').trim();
+    let processed = 0;
     for (const it of customRegex.items) {
+        if (processed >= 50) break;
         if (!it || it.enabled === false) continue;
         if (typeof it.pattern !== 'string' || !it.pattern) continue;
+        if (it.pattern.length > 1000) continue;        // 异常长 pattern 拒绝构造
         const target = it.target || 'both';
         if (target === 'user' && !isUser) continue;
         if (target === 'ai'   &&  isUser) continue;
@@ -1431,6 +1446,7 @@ function applyCustomRegex(text, customRegex, isUser) {
         catch { continue; }                        // 写错的正则跳过，不炸整条消息
         const repl = typeof it.replace === 'string' ? it.replace : '';
         try { out = out.replace(re, repl); } catch { continue; }
+        processed++;
     }
     return out.replace(/\n{3,}/g, '\n\n').trim();
 }
@@ -1704,7 +1720,8 @@ function readerCfg() {
         // v0.5.18 用 DEFAULT_CUSTOM_REGEX 兜底，老用户没有 builtinFold 字段时也能拿到默认 true
         customRegex: { ...DEFAULT_CUSTOM_REGEX, ...(cfg.customRegex || {}) },
         userRules: {
-            enabled: !!u.enabled,
+            // v0.5.24: 与导出处 (u.enabled !== false) 语义对齐——undefined / null 视为启用，仅显式 false 才禁用
+            enabled: u.enabled !== false,
             strip:   { ...DEFAULT_STRIP,   ...(u.strip   || {}) },
             extract: { ...DEFAULT_EXTRACT, ...(u.extract || {}) },
         },
@@ -1973,6 +1990,9 @@ function bindReaderMsgMenu() {
 function closeMsgMenu() {
     const m = document.getElementById('cv_msg_menu');
     if (m) {
+        // v0.5.24: 监听器是延迟到 setTimeout 才注册的；如果在 timeout 触发前关闭菜单，
+        //          需要先 clearTimeout 阻止"菜单已 remove 但监听器才挂上"的孤儿监听器泄漏。
+        if (m._pendingTimer) { clearTimeout(m._pendingTimer); m._pendingTimer = null; }
         try { m._cleanup && m._cleanup(); } catch {}
         m.remove();
     }
@@ -2022,7 +2042,9 @@ function openMsgMenu(msgEl, x, y) {
         if (menu.contains(ev.target)) return;
         closeMsgMenu();
     };
-    setTimeout(() => {
+    // v0.5.24: 保存 timer id，closeMsgMenu 才能在监听器挂上之前撤销，避免孤儿监听器泄漏
+    menu._pendingTimer = setTimeout(() => {
+        menu._pendingTimer = null;
         document.addEventListener('mousedown', onDocDown, true);
         document.addEventListener('touchstart', onDocDown, true);
     }, 0);
