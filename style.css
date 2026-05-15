@@ -2239,30 +2239,3 @@
     padding: 0 0 4px;
     margin-top: 0;
 }
-
-
-/* v0.5.17 关键词屏蔽（mask）—— 折叠 box + 单输入行 */
-.cv-mask-box .cv-bm-toggle { cursor: pointer; user-select: none; }
-.cv-mask-box[data-collapsed="0"] .cv-bm-chev { transform: rotate(180deg); }
-.cv-mask-box .cv-bm-chev { transition: transform .18s ease; }
-.cv-mask-row {
-    display: flex;
-    gap: 6px;
-    margin-top: 6px;
-    align-items: center;
-}
-.cv-mask-row input.cv-mask-text {
-    flex: 1;
-    min-width: 0;
-    padding: 6px 8px;
-    border-radius: 6px;
-    border: 1px solid var(--cv-border);
-    background: var(--cv-bg-input, var(--cv-bg-card));
-    color: var(--cv-text);
-    font-size: 13px;
-    line-height: 1.4;
-}
-.cv-mask-row input.cv-mask-text:focus {
-    outline: none;
-    border-color: var(--cv-accent);
-}
