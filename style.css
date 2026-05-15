@@ -2355,3 +2355,12 @@
     word-break: break-all;
     user-select: text;
 }
+
+/* v0.5.23 折叠箭头小图形对触控来说是噪音——把它的事件穿透到父级 .cv-fold-toggle，
+   保证整行哪儿都点得着，避免移动端"偶尔点箭头没反应"。同时给标题区适当 padding 增大命中面。 */
+.cv-bm-chev { pointer-events: none; }
+.cv-fold-toggle {
+    padding: 6px 4px;
+    -webkit-tap-highlight-color: rgba(0,0,0,0.05);
+    touch-action: manipulation;
+}

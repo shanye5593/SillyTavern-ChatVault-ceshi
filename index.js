@@ -4,7 +4,7 @@
  * https://github.com/shanye5593/SillyTavern-ChatVault
  */
 
-const VERSION = '0.5.22';
+const VERSION = '0.5.23';
 const STORAGE_KEY = 'st-chatvault-meta';
 const SETTINGS_KEY = 'st-chatvault-settings';
 const PAGE_SIZE = 50;
@@ -2235,7 +2235,7 @@ function mountRulesEditor(host, opts) {
                 <span class="cv-bm-chev">▾</span>
             </div>
             <div class="cv-fold-body" hidden>
-                <div class="cv-field-hint">user 消息使用下面这组规则（覆盖上方默认规则）</div>
+                <div class="cv-field-hint">user 消息使用下面这组规则</div>
                 <div class="cv-strip-subbox">
                     <div class="cv-strip-subtitle">user · 剥离</div>
                     ${sw(`${px}_us_recall`,     ustrip.recall,     '&lt;recall&gt;…&lt;/recall&gt;')}
@@ -2270,6 +2270,11 @@ function mountRulesEditor(host, opts) {
                         <span class="cv-switch-track"><span class="cv-switch-thumb"></span></span>
                     </span>
                 </label>
+                <div class="cv-info-tip">
+                    <b>使用建议</b>：<br>
+                    · 如果"user 消息单独规则"已经能把上下文提取干净，<b>不要</b>再开这条；<br>
+                    · 如果开启后某条 user 消息渲染为空，<b>关掉这条</b>再看。
+                </div>
                 <div id="${px}_cre_list"></div>
                 <div class="cv-cre-actions">
                     <button class="cv-btn cv-strip-add" id="${px}_cre_add" type="button">+ 创建</button>
