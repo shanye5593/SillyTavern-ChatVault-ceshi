@@ -2318,3 +2318,20 @@
 .cv-cre-target label { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
 .cv-cre-label-inline { opacity: .8; }
 .cv-cre-err { color: #e57373; font-size: 11px; }
+
+/* v0.5.18 折叠区块（4 大区块共用） */
+.cv-fold-toggle {
+    cursor: pointer;
+    display: flex !important;
+    align-items: center;
+    justify-content: space-between;
+    user-select: none;
+    margin-bottom: 0;
+}
+.cv-fold-box[data-collapsed="0"] .cv-bm-chev { transform: rotate(180deg); }
+.cv-fold-body {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding-top: 8px;
+}
