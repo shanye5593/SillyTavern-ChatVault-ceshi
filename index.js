@@ -4,7 +4,7 @@
  * https://github.com/shanye5593/SillyTavern-ChatVault
  */
 
-const VERSION = '0.5.10';
+const VERSION = '0.5.17';
 const STORAGE_KEY = 'st-chatvault-meta';
 const SETTINGS_KEY = 'st-chatvault-settings';
 const PAGE_SIZE = 50;
@@ -81,6 +81,10 @@ const DEFAULT_SETTINGS = {
     // v0.5.14 阅读模式增强渲染开关（表格/代码块/列表/引用/AI 内联 HTML 如 <img> <p style>）
     // 默认 ON；如果遇到大图/超长表格卡顿，可关掉退回极简模式（仅识别 *斜* **粗**）
     readerRichRender: true,
+    // v0.5.17 关键词屏蔽：把任意文本片段（人名、整段说明文）从渲染中删除（不替换、不留痕）
+    // 全局生效（阅读模式 / 列表预览 / 导出 txt），不区分 user/AI；为空时彻底跳过、零开销
+    // 形如 { items: [{ text: '小明' }, { text: '以上是用户的本轮输入，需要解读...' }] }
+    mask: { items: [] },
 };
 
 function loadSettings() {
@@ -1394,9 +1398,28 @@ function applyExtraction(text, extract) {
     return parts.join('\n\n');
 }
 
-// 完整管线：先剥离再提取
-function processMessageText(text, strip, extract) {
-    return applyExtraction(applyStripping(text, strip), extract).trim();
+// v0.5.17：关键词屏蔽 —— 把指定文本片段从消息里彻底删除（字符串完全匹配，无正则元字符问题）
+// 删除后用 \n{3,} → \n\n 收一次空行，避免删完留尴尬大空白
+// 设计上放在管线最末（剥离 → 提取 → 屏蔽）：
+//   - 早于剥离 → 可能误伤标签字符导致剥离规则失效
+//   - 晚于提取 → 在已经"干净"的正文上工作，匹配最直观
+function applyMask(text, mask) {
+    if (typeof text !== 'string' || !text) return text || '';
+    if (!mask || !Array.isArray(mask.items) || mask.items.length === 0) return text;
+    let out = text;
+    for (const it of mask.items) {
+        const w = it && typeof it.text === 'string' ? it.text : '';
+        if (!w) continue;                 // 空项跳过，防误删全部
+        // split + join 比 replaceAll 兼容性好（旧浏览器无 replaceAll），且对特殊字符天然安全
+        out = out.split(w).join('');
+    }
+    return out.replace(/\n{3,}/g, '\n\n').trim();
+}
+
+// 完整管线：剥离 → 提取 → 屏蔽
+// mask 形参可选，调用方未传时直接跳过屏蔽步骤（向后兼容）
+function processMessageText(text, strip, extract, mask) {
+    return applyMask(applyExtraction(applyStripping(text, strip), extract), mask).trim();
 }
 
 // —— v0.5.11: 阅读模式 markdown 渲染（套餐 A + DOMPurify HTML 直通）——
@@ -1722,8 +1745,9 @@ function renderReader() {
         ? `/thumbnail?type=persona&file=${encodeURIComponent(boundUserAvatarFile)}`
         : '';
 
-    // 处理 + 缓存（依赖 strip/extract/userRules 配置，不含 style）
-    const cfgSig = JSON.stringify({ s: cfg.strip, e: cfg.extract, u: cfg.userRules });
+    // 处理 + 缓存（依赖 strip/extract/userRules/mask 配置，不含 style）
+    // v0.5.17: cfgSig 纳入 mask，否则改了屏蔽词不会重算缓存
+    const cfgSig = JSON.stringify({ s: cfg.strip, e: cfg.extract, u: cfg.userRules, m: cfg.mask });
     if (readerState._cfgSig !== cfgSig || !readerState._processed) {
         readerState._cfgSig = cfgSig;
         readerState._processed = messages.map((m, idx) => {
@@ -1731,7 +1755,7 @@ function renderReader() {
             const useUser = cfg.userRules.enabled && isUser;
             const s = useUser ? cfg.userRules.strip : cfg.strip;
             const e = useUser ? cfg.userRules.extract : cfg.extract;
-            const text = (m && typeof m.mes === 'string') ? processMessageText(m.mes, s, e) : '';
+            const text = (m && typeof m.mes === 'string') ? processMessageText(m.mes, s, e, cfg.mask) : '';
             // user 名字优先用消息自身记录的 m.name（兼容多 persona 聊天），否则用文件级 userName
             const rawName = m?.name && m.name !== 'unused' ? m.name : '';
             const who = isUser ? (rawName || userName) : (rawName || charName);
@@ -2131,6 +2155,9 @@ function mountRulesEditor(host, opts) {
     const userR    = { ...DEFAULT_USER_RULES, ...(getAt(cfg, userPath)  || {}) };
     const ustrip   = { ...DEFAULT_STRIP,   ...(userR.strip   || {}) };
     const uextract = { ...DEFAULT_EXTRACT, ...(userR.extract || {}) };
+    // v0.5.17 关键词屏蔽：mask 是全局配置（cfg.mask），不属于 strip/extract，独立管理
+    const mask     = { items: [], ...(cfg.mask || {}) };
+    const maskHasAny = Array.isArray(mask.items) && mask.items.some(it => it && (it.text || '').length);
     const sw = (id, on, label) => `
         <label class="cv-switch-row">
             <span class="cv-switch-label">${label}</span>
@@ -2168,6 +2195,17 @@ function mountRulesEditor(host, opts) {
             <div class="cv-strip-custom-title">自定义提取对</div>
             <div id="${px}_e_list"></div>
             <button class="cv-btn cv-strip-add" id="${px}_e_add" type="button">+ 添加</button>
+        </div>
+        <div class="cv-strip-box cv-mask-box" data-collapsed="${maskHasAny ? '0' : '1'}">
+            <div class="cv-strip-title cv-bm-toggle" id="${px}_m_toggle">
+                <span class="cv-bm-title-label"><span>关键词屏蔽（全局 · 直接删除）</span></span>
+                <span class="cv-bm-chev">▾</span>
+            </div>
+            <div class="cv-mask-body" id="${px}_m_body" ${maskHasAny ? '' : 'hidden'}>
+                <div class="cv-field-hint">填入要从渲染中隐藏的文本片段（人名、整段说明文等都行）。匹配到的文本会被直接删除、不留痕，对 AI / 用户消息都生效。</div>
+                <div id="${px}_m_list"></div>
+                <button class="cv-btn cv-strip-add" id="${px}_m_add" type="button">+ 添加</button>
+            </div>
         </div>
         <div class="cv-strip-box cv-user-rules-box">
             <label class="cv-switch-row">
@@ -2255,6 +2293,63 @@ function mountRulesEditor(host, opts) {
     renderList(`${px}_e_list`,  `${px}_e_add`,  extractPath,              false);
     renderList(`${px}_us_list`, `${px}_us_add`, [...userPath, 'strip'],   true);
     renderList(`${px}_ue_list`, `${px}_ue_add`, [...userPath, 'extract'], false);
+
+    // —— v0.5.17 关键词屏蔽列表渲染 + 折叠交互 ——
+    // 与 custom 剥离对相同的"oninput 只保存、onblur 才 repaint"模式，避免输入时父节点重渲毁焦
+    const mutateMask = (mut) => {
+        const c = JSON.parse(JSON.stringify(loadSettings()));
+        const cur = { items: [], ...(c.mask || {}) };
+        cur.items = Array.isArray(cur.items) ? cur.items.slice() : [];
+        mut(cur);
+        c.mask = cur;
+        saveSettings(c);
+    };
+    const renderMaskList = () => {
+        const list = host.querySelector('#' + px + '_m_list');
+        if (!list) return;
+        const cur = ((loadSettings().mask) || {}).items || [];
+        list.innerHTML = cur.map((it, i) => `
+            <div class="cv-mask-row" data-i="${i}">
+                <input type="text" class="cv-mask-text" placeholder="要屏蔽的文本（短词 / 长句都行，可粘贴）" value="${escapeHtml(it && it.text || '')}"/>
+                <button class="cv-strip-del" type="button">×</button>
+            </div>
+        `).join('') || '<div class="cv-field-hint">（暂无）</div>';
+        list.querySelectorAll('.cv-mask-row').forEach(row => {
+            const i = Number(row.dataset.i);
+            const inp = row.querySelector('.cv-mask-text');
+            let focusVal = '';
+            inp.oninput = () => mutateMask(m => {
+                m.items[i] = { text: inp.value };
+            });
+            inp.onfocus = () => { focusVal = inp.value; };
+            inp.onblur  = () => { if (inp.value !== focusVal) setTimeout(repaint, 0); };
+            row.querySelector('.cv-strip-del').onclick = () => {
+                mutateMask(m => { m.items = m.items.filter((_, k) => k !== i); });
+                renderMaskList();
+                repaint();
+            };
+        });
+        const addBtn = host.querySelector('#' + px + '_m_add');
+        if (addBtn) addBtn.onclick = () => {
+            mutateMask(m => { m.items = [...m.items, { text: '' }]; });
+            renderMaskList();
+            // 不 repaint —— 等用户填完失焦再重排
+            const newRow = list.querySelector(`.cv-mask-row[data-i="${(((loadSettings().mask)||{}).items||[]).length - 1}"]`);
+            const firstInput = newRow && newRow.querySelector('.cv-mask-text');
+            if (firstInput) firstInput.focus();
+        };
+    };
+    renderMaskList();
+
+    // 屏蔽 box 折叠：点标题切换 data-collapsed + body hidden
+    const mToggle = host.querySelector('#' + px + '_m_toggle');
+    const mBody   = host.querySelector('#' + px + '_m_body');
+    const mBox    = mToggle && mToggle.closest('.cv-mask-box');
+    if (mToggle && mBody && mBox) mToggle.onclick = () => {
+        const collapsed = mBox.getAttribute('data-collapsed') !== '0';
+        mBox.setAttribute('data-collapsed', collapsed ? '0' : '1');
+        mBody.hidden = !collapsed ? true : false;  // collapsed → 现在要展开 → hidden = false
+    };
 
     // —— 开关组 ——
     const flagMap = [
@@ -2743,7 +2838,7 @@ async function exportChatTxt(character, fileName) {
             const who = isUser
                 ? (m.name && m.name !== 'unused' ? m.name : userName)
                 : (m.name || charName);
-            const cleaned = processMessageText(m.mes, s, e);
+            const cleaned = processMessageText(m.mes, s, e, cfg.mask);
             if (!cleaned) continue;
             lines.push(`【${who}】`);
             lines.push(cleaned);
