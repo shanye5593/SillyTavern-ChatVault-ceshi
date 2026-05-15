@@ -4,7 +4,7 @@
  * https://github.com/shanye5593/SillyTavern-ChatVault
  */
 
-const VERSION = '0.5.24';
+const VERSION = '0.5.25';
 const STORAGE_KEY = 'st-chatvault-meta';
 const SETTINGS_KEY = 'st-chatvault-settings';
 const PAGE_SIZE = 50;
@@ -98,6 +98,10 @@ function loadSettings() {
             if (s.readStrip)      s.strip     = { ...DEFAULT_STRIP,   ...s.readStrip };
             if (s.readExtract)    s.extract   = { ...DEFAULT_EXTRACT, ...s.readExtract };
             if (s.userReadRules)  s.userRules = JSON.parse(JSON.stringify(s.userReadRules));
+            // v0.5.25: 一次性清洗——v0.5.21 曾把"折叠态"写进 userRules.enabled，
+            // 导致老用户存档里 enabled=false 卡死、UI 又没开关翻回来 → user 单独规则永久失效。
+            // 现在彻底废弃该字段：load 时强制 true，运行路径也不再读它。
+            if (s.userRules && s.userRules.enabled === false) s.userRules.enabled = true;
             delete s.readStrip; delete s.readExtract; delete s.userReadRules;
             try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); } catch {}
         }
@@ -1720,8 +1724,8 @@ function readerCfg() {
         // v0.5.18 用 DEFAULT_CUSTOM_REGEX 兜底，老用户没有 builtinFold 字段时也能拿到默认 true
         customRegex: { ...DEFAULT_CUSTOM_REGEX, ...(cfg.customRegex || {}) },
         userRules: {
-            // v0.5.24: 与导出处 (u.enabled !== false) 语义对齐——undefined / null 视为启用，仅显式 false 才禁用
-            enabled: u.enabled !== false,
+            // v0.5.25: enabled 字段彻底废弃（UI 已无开关）。运行路径不再读它，留 true 仅为存档兼容。
+            enabled: true,
             strip:   { ...DEFAULT_STRIP,   ...(u.strip   || {}) },
             extract: { ...DEFAULT_EXTRACT, ...(u.extract || {}) },
         },
@@ -1791,8 +1795,9 @@ function renderReader() {
         readerState._cfgSig = cfgSig;
         readerState._processed = messages.map((m, idx) => {
             const isUser = !!m?.is_user;
-            // v0.5.22: 新用户默认 enabled=true。老用户若显式 enabled=false 则保留原行为（用户消息走默认规则），不强制迁移。
-            const useUser = isUser && cfg.userRules.enabled !== false;
+            // v0.5.25: enabled 字段废弃（v0.5.21 曾错误地把折叠态写进它，导致部分用户卡死 false）。
+            // user 消息一律走 user-rules；想关掉就把下面的 user · 剥离 / 提取 单项关掉即可。
+            const useUser = isUser;
             const s = useUser ? cfg.userRules.strip : cfg.strip;
             const e = useUser ? cfg.userRules.extract : cfg.extract;
             const text = (m && typeof m.mes === 'string') ? processMessageText(m.mes, s, e, cfg.customRegex, isUser) : '';
@@ -3056,8 +3061,8 @@ async function exportChatTxt(character, fileName) {
             const m = arr[i];
             if (!m || typeof m.mes !== 'string') continue;
             const isUser = !!m.is_user;
-            // v0.5.22: 与阅读模式一致——尊重老用户存档的 enabled=false
-            const useUser = isUser && u.enabled !== false;
+            // v0.5.25: 与阅读模式一致——enabled 字段废弃，user 消息一律走 user-rules
+            const useUser = isUser;
             const s = useUser ? ustrip   : strip;
             const e = useUser ? uextract : extract;
             const who = isUser
