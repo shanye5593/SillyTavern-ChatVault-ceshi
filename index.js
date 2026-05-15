@@ -1282,14 +1282,17 @@ function setupPreviewObserver() {
                     el.classList.add('is-empty');
                     el.textContent = '（空聊天）';
                 } else {
-                    // 简单清洗 markdown 符号，保留可读性
-                    const clean = text
+                    // v0.5.17: 预览也应用关键词屏蔽（与阅读模式/导出保持一致）
+                    // 只走 mask，不走 strip/extract —— 预览历史上就是 raw 截断，保留这个轻量行为
+                    const masked = applyMask(text, (loadSettings().mask) || { items: [] });
+                    const clean = masked
                         .replace(/[*_`~]+/g, '')
                         .replace(/\s+/g, ' ')
                         .trim()
                         .slice(0, 240);
                     el.classList.remove('is-loading');
-                    el.textContent = clean;
+                    el.textContent = clean || '（空聊天）';
+                    if (!clean) el.classList.add('is-empty');
                 }
             });
         }
@@ -1316,8 +1319,12 @@ function observePreviews() {
                 el.classList.remove('is-loading'); el.classList.add('is-empty');
                 el.textContent = '（空聊天）';
             } else {
+                // v0.5.17: 同步在缓存命中分支也应用 mask（与首次加载分支保持一致）
+                const masked = applyMask(text, (loadSettings().mask) || { items: [] });
+                const clean = masked.replace(/[*_`~]+/g, '').replace(/\s+/g, ' ').trim().slice(0, 240);
                 el.classList.remove('is-loading');
-                el.textContent = text.replace(/[*_`~]+/g, '').replace(/\s+/g, ' ').trim().slice(0, 240);
+                el.textContent = clean || '（空聊天）';
+                if (!clean) el.classList.add('is-empty');
             }
             return;
         }
