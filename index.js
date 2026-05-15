@@ -4,7 +4,7 @@
  * https://github.com/shanye5593/SillyTavern-ChatVault
  */
 
-const VERSION = '0.5.25';
+const VERSION = '0.5.26';
 const STORAGE_KEY = 'st-chatvault-meta';
 const SETTINGS_KEY = 'st-chatvault-settings';
 const PAGE_SIZE = 50;
@@ -2646,7 +2646,6 @@ function renderReaderSettings(panel) {
                 <span class="cv-switch-track"><span class="cv-switch-thumb"></span></span>
             </span>
         </label>`;
-    const curTheme = THEMES.some(t => t.id === cfg.theme) ? cfg.theme : 'dark';
     const curPager = cfg.readerPagerMode === 'always' ? 'always' : 'autoHide';
     panel.innerHTML = `
         <div class="cv-reader-settings-header">
@@ -2745,17 +2744,6 @@ function renderReaderSettings(panel) {
                 </div>
             </div>
             <div class="cv-strip-box">
-                <div class="cv-strip-title">配色方案</div>
-                <div class="cv-reader-style-row">
-                    ${THEMES.map(t => `
-                        <label class="cv-reader-style-opt ${curTheme===t.id?'is-on':''}">
-                            <input type="radio" name="cv_r_theme" value="${t.id}" ${curTheme===t.id?'checked':''}/>
-                            <span class="cv-reader-style-name">${escapeHtml(t.name)}</span>
-                        </label>
-                    `).join('')}
-                </div>
-            </div>
-            <div class="cv-strip-box">
                 <div class="cv-strip-title">
                     user 头像（仅本聊天）
                     <button class="cv-info-btn" type="button" id="cv_r_ua_info" title="点击查看说明">!</button>
@@ -2792,18 +2780,8 @@ function renderReaderSettings(panel) {
         </div>
     `;
 
-    panel.querySelectorAll('input[name="cv_r_theme"]').forEach(r => {
-        r.onchange = () => {
-            if (!r.checked) return;
-            const c = loadSettings();
-            saveSettings({ ...c, theme: r.value });
-            const root = document.getElementById('chatvault_panel');
-            if (root) root.className = currentThemeClass() + (readerState.active ? ' cv-in-reader' : '');
-            panel.querySelectorAll('input[name="cv_r_theme"]').forEach(x => {
-                x.closest('.cv-reader-style-opt')?.classList.toggle('is-on', x.checked);
-            });
-        };
-    });
+    // v0.5.26: 阅读模式的"配色方案"块已删除——它本就只改 chatvault_panel 自身样式，
+    //           跟主面板设置完全重复。配色统一在主设置面板里改。
     panel.querySelectorAll('input[name="cv_r_pager"]').forEach(r => {
         r.onchange = () => {
             if (!r.checked) return;
