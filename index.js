@@ -4,7 +4,7 @@
  * https://github.com/shanye5593/SillyTavern-ChatVault
  */
 
-const VERSION = '0.5.21';
+const VERSION = '0.5.22';
 const STORAGE_KEY = 'st-chatvault-meta';
 const SETTINGS_KEY = 'st-chatvault-settings';
 const PAGE_SIZE = 50;
@@ -32,7 +32,7 @@ const DEFAULT_EXTRACT = {
     custom: [],               // [{open, close}, ...]
 };
 const DEFAULT_USER_RULES = {
-    enabled: false,
+    enabled: true,                            // v0.5.22 起新用户默认启用；老用户存档若为 false 则保持兼容
     strip: {
         thinking: false, think: false, htmlComment: false,
         selfClosing: false, mdHeaders: false,
@@ -1774,8 +1774,8 @@ function renderReader() {
         readerState._cfgSig = cfgSig;
         readerState._processed = messages.map((m, idx) => {
             const isUser = !!m?.is_user;
-            // v0.5.21: user 单独规则始终生效（用户配置的 user · 剥离/提取 即是其意图）
-            const useUser = isUser;
+            // v0.5.22: 新用户默认 enabled=true。老用户若显式 enabled=false 则保留原行为（用户消息走默认规则），不强制迁移。
+            const useUser = isUser && cfg.userRules.enabled !== false;
             const s = useUser ? cfg.userRules.strip : cfg.strip;
             const e = useUser ? cfg.userRules.extract : cfg.extract;
             const text = (m && typeof m.mes === 'string') ? processMessageText(m.mes, s, e, cfg.customRegex, isUser) : '';
@@ -2217,10 +2217,10 @@ function mountRulesEditor(host, opts) {
             <div class="cv-fold-body" hidden>
                 <div class="cv-field-hint">只保留这些标签内的内容</div>
                 <div class="cv-info-tip">
-                    <b>提取功能注意</b>：开启后，正文必须被对应标签完整包裹（例：<code>&lt;content&gt;…&lt;/content&gt;</code>），否则——<br>
-                    · 如果原文没有用对应标签包裹正文，该消息将显示为空；<br>
-                    · 如果包裹错误（标签未闭合），同样为空。<br>
-                    正文消失时请关闭提取，或确认标签格式一致。
+                    <b>提取功能注意</b>：开启后只保留对应标签内的内容（例：<code>&lt;content&gt;…&lt;/content&gt;</code>）。<br>
+                    · 原文中<b>完全没出现</b>任一启用的标签：保留原文（兜底，避免消息消失）；<br>
+                    · 标签存在但<b>内部为空</b>或仅有空白：渲染结果就是空；<br>
+                    · 标签未正确闭合：当成不存在处理，按上面第一条走。
                 </div>
                 ${sw(`${px}_e_content`, extract.content, '&lt;content&gt;…&lt;/content&gt;')}
                 ${sw(`${px}_e_reply`,   extract.reply,   '&lt;reply&gt;…&lt;/reply&gt;')}
@@ -3029,8 +3029,8 @@ async function exportChatTxt(character, fileName) {
             const m = arr[i];
             if (!m || typeof m.mes !== 'string') continue;
             const isUser = !!m.is_user;
-            // v0.5.21: user 单独规则始终生效（与阅读模式一致）
-            const useUser = isUser;
+            // v0.5.22: 与阅读模式一致——尊重老用户存档的 enabled=false
+            const useUser = isUser && u.enabled !== false;
             const s = useUser ? ustrip   : strip;
             const e = useUser ? uextract : extract;
             const who = isUser
