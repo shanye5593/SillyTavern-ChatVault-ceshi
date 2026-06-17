@@ -78,11 +78,15 @@ const DEFAULT_SETTINGS = {
     // 自定义配色（v0.3.32 起；只覆盖填了的字段，其它跟随主题）
     // 形如 { accent:'#34d399', bgPanel:'#212327', bgCard:'#2a2d32', text:'#e4e5e7', overlayAlpha:0.55 }
     customColors: {},
-    // 桌面窗口模式（v0.3.27 起，仅桌面端生效，手机端完全跳过）
+    // 桌面窗口模式（仅桌面端生效，手机端完全跳过）
+    desktopPanelMode: 'modal',         // 'modal' | 'dock'：经典居中弹窗 / 左侧停靠栏
+    desktopCardLayout: 'auto',         // 'auto' | 'narrow' | 'wide'：按面板宽度自动单/双列，或强制指定
+    readerExpandMode: 'auto',          // 'auto' | 'off'：阅读模式是否临时展开大屏
+    leftDockButton: true,              // 左侧边缘 ChatVault 快捷入口
     windowFreeMode: false,             // 自由模式：去掉遮罩，可同时操作酒馆
     windowHotkey: false,               // 是否启用全局快捷键开关面板
     windowHotkeyCombo: 'Alt+V',        // 快捷键组合
-    windowState: null,                 // 记忆位置：{ x, y, scale }
+    windowState: null,                 // 记忆位置/尺寸：{ x, y, w, h, layout, mode }；兼容旧 { x, y, scale }
     // 是否在酒馆欢迎页底部追加「聊天档案」快捷按钮（与 API 连接/角色管理/扩展程序 同排）
     welcomeButton: true,
     // v0.5.14 阅读模式增强渲染开关（表格/代码块/列表/引用/AI 内联 HTML 如 <img> <p style>）
@@ -132,6 +136,11 @@ function saveSettings(s) {
 function currentThemeClass() {
     const id = loadSettings().theme;
     return THEMES.some(t => t.id === id) ? `cv-theme-${id}` : 'cv-theme-dark';
+}
+function applyThemeClass(el) {
+    if (!el) return;
+    THEMES.forEach(t => el.classList.remove(`cv-theme-${t.id}`));
+    el.classList.add(currentThemeClass());
 }
 
 /* ============================================================
@@ -650,8 +659,12 @@ const ICONS = {
  *  UI 顶层
  * ============================================================ */
 
-function openPanel() {
-    if (panelEl) return;
+function openPanel(modeOverride = '') {
+    if (panelEl) {
+        const panel = document.getElementById('chatvault_panel');
+        if (modeOverride && panel && !panel.classList.contains('cv-in-reader')) applyWindowState(panelEl, panel, modeOverride);
+        return;
+    }
     panelEl = document.createElement('div');
     panelEl.id = 'chatvault_overlay';
     panelEl.className = currentThemeClass();
@@ -693,7 +706,7 @@ function openPanel() {
 
     // 桌面窗口模式：装把手、还原位置、绑定拖拽/拉伸（手机端内部直接 return）
     const _panel = document.getElementById('chatvault_panel');
-    applyWindowState(panelEl, _panel);
+    applyWindowState(panelEl, _panel, modeOverride);
     initWindowChrome(panelEl, _panel);
 
     document.getElementById('cv_close').onclick = closePanel;
@@ -1661,6 +1674,7 @@ const readerState = {
 };
 
 let _readerToken = 0;
+let _readerPanelBeforeExpand = null;
 async function enterReader(character, fileName) {
     if (!character || !fileName) return;
     const myToken = ++_readerToken;
@@ -1677,7 +1691,10 @@ async function enterReader(character, fileName) {
     readerState._cfgSig = null;
     readerState.settingsOpen = false;
     const panel = document.getElementById('chatvault_panel');
-    if (panel) panel.classList.add('cv-in-reader');
+    if (panel) {
+        panel.classList.add('cv-in-reader');
+        applyReaderPanelExpand(panel);
+    }
     renderReader();
     let arr;
     try {
@@ -1700,13 +1717,57 @@ function exitReader() {
     readerState._cfgSig = null;
     readerState.settingsOpen = false;
     const panel = document.getElementById('chatvault_panel');
-    if (panel) panel.classList.remove('cv-in-reader');
+    if (panel) {
+        panel.classList.remove('cv-in-reader');
+        restoreReaderPanelExpand(panel);
+    }
     render();
     // 列表 DOM 重建后恢复滚动位置（同步执行已足够，但 RAF 更稳）
     requestAnimationFrame(() => {
         const body = document.getElementById('cv_body');
         if (body) body.scrollTop = saved;
     });
+}
+
+function applyReaderPanelExpand(panel) {
+    if (isMobileLayout() || !panelEl) return;
+    const s = loadSettings();
+    if (s.readerExpandMode === 'off') return;
+    _readerPanelBeforeExpand = {
+        ...getCurrentState(panel),
+        positioned: panelEl.classList.contains('cv-window-positioned'),
+    };
+    panel.classList.add('cv-reader-expanded');
+    const vw = window.innerWidth || 1200;
+    const vh = window.innerHeight || 800;
+    const w = Math.min(CV_PANEL_READER_W, Math.round(vw * 0.96), vw - CV_PANEL_MARGIN * 2);
+    const h = Math.min(CV_PANEL_READER_H, Math.round(vh * 0.94), vh - CV_PANEL_MARGIN * 2);
+    applyPanelBox(panel, panelEl, {
+        x: Math.round((vw - w) / 2),
+        y: Math.round((vh - h) / 2),
+        w,
+        h,
+    }, false);
+    applyPanelLayoutClass(panel, 'wide');
+}
+
+function restoreReaderPanelExpand(panel) {
+    if (!panelEl) return;
+    panel.classList.remove('cv-reader-expanded');
+    if (_readerPanelBeforeExpand && !isMobileLayout()) {
+        applyPanelModeClasses(panelEl, panel, _readerPanelBeforeExpand.mode);
+        if (_readerPanelBeforeExpand.positioned || _readerPanelBeforeExpand.mode === 'dock') {
+            applyPanelBox(panel, panelEl, _readerPanelBeforeExpand, false);
+        } else {
+            panelEl.classList.remove('cv-window-positioned');
+            panel.style.removeProperty('left');
+            panel.style.removeProperty('top');
+            panel.style.removeProperty('width');
+            panel.style.removeProperty('height');
+            applyPanelLayoutClass(panel, getLayoutForWidth(getDefaultPanelBox(_readerPanelBeforeExpand.mode).w));
+        }
+    }
+    _readerPanelBeforeExpand = null;
 }
 
 function readerCfg() {
@@ -3392,14 +3453,40 @@ function removeButton() {
     document.getElementById('chatvault_open_btn')?.remove();
 }
 
+function injectDockTab() {
+    if (isMobileLayout()) return;
+    if (document.getElementById('chatvault_dock_tab')) return;
+    const s = loadSettings();
+    if (!s.enabled || !s.leftDockButton) return;
+    const tab = document.createElement('button');
+    tab.id = 'chatvault_dock_tab';
+    tab.type = 'button';
+    tab.title = '打开聊天档案侧栏';
+    tab.innerHTML = `<i class="fa-solid fa-book"></i><span>档案</span>`;
+    tab.onclick = (e) => { e.preventDefault(); e.stopPropagation(); openPanel('dock'); };
+    document.body.appendChild(tab);
+}
+
+function removeDockTab() {
+    document.getElementById('chatvault_dock_tab')?.remove();
+}
+
+function applyDockTabState() {
+    const s = loadSettings();
+    if (s.enabled && s.leftDockButton) injectDockTab();
+    else removeDockTab();
+}
+
 function applyEnabledState() {
     const s = loadSettings();
     if (s.enabled) injectButton();
     else {
         removeButton();
+        removeDockTab();
         if (panelEl) closePanel();
     }
     applyWelcomeButtonState();
+    applyDockTabState();
 }
 
 /* ============================================================
@@ -3531,83 +3618,159 @@ function isMobileLayout() {
     return !!(window.matchMedia && window.matchMedia('(max-width: 720px)').matches);
 }
 
-/* ----- v0.3.30-test：改成 transform: scale 等比缩放 -----
- * - 状态从 {x,y,w,h} 改成 {x,y,scale}
- * - scale 范围 0.4 ~ 3.0（v0.3.31 起；移除了双击最大化以避免误触）
- * - 内部布局始终按"原生像素"排版，不会因为缩放错乱
- */
-const CV_MIN_SCALE = 0.4;
-const CV_MAX_SCALE = 3.0;
+/* ----- 桌面尺寸模式：用真实宽高替代 transform: scale ----- */
+const CV_PANEL_MIN_W = 340;
+const CV_PANEL_MIN_H = 520;
+const CV_PANEL_WIDE_AT = 760;
+const CV_PANEL_MARGIN = 12;
+const CV_PANEL_DOCK_W = 420;
+const CV_PANEL_MODAL_W = 1100;
+const CV_PANEL_MODAL_H = 800;
+const CV_PANEL_READER_W = 1180;
+const CV_PANEL_READER_H = 900;
 
-function ensureNativeSize(panel) {
-    if (panel._cvNative) return panel._cvNative;
-    // 测量必须在 transform 应用之前；此函数被首次调用时面板还没缩放过
-    const prev = panel.style.transform;
-    if (prev) panel.style.removeProperty('transform');
-    const r = panel.getBoundingClientRect();
-    panel._cvNative = { w: Math.round(r.width), h: Math.round(r.height) };
-    if (prev) panel.style.setProperty('transform', prev, 'important');
-    return panel._cvNative;
+function _num(v, fallback) {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : fallback;
 }
 
-function clampState(state, nativeW, nativeH) {
-    const vw = window.innerWidth, vh = window.innerHeight;
-    let scale = Math.max(CV_MIN_SCALE, Math.min(CV_MAX_SCALE, state.scale));
-    // 屏幕装不下当前 scale 时进一步压低
-    const maxFit = Math.min(vw / nativeW, vh / nativeH);
-    if (scale > maxFit) scale = maxFit;
-    const visW = nativeW * scale, visH = nativeH * scale;
-    let x = visW >= vw ? 0 : Math.max(0, Math.min(state.x, vw - visW));
-    let y = visH >= vh ? 0 : Math.max(0, Math.min(state.y, vh - visH));
-    return { x, y, scale };
+function _clamp(n, min, max) {
+    return Math.max(min, Math.min(max, n));
 }
 
-function applyTransform(panel, state) {
-    const { w, h } = ensureNativeSize(panel);
-    const c = clampState(state, w, h);
-    panel.style.setProperty('left',   c.x + 'px', 'important');
-    panel.style.setProperty('top',    c.y + 'px', 'important');
-    panel.style.setProperty('transform', `scale(${c.scale})`, 'important');
-    panel.style.setProperty('transform-origin', 'top left', 'important');
-    return c;
+function getDesktopPanelMode(s = loadSettings(), overrideMode = '') {
+    const raw = overrideMode || s.desktopPanelMode;
+    return raw === 'dock' ? 'dock' : 'modal';
+}
+
+function getDefaultPanelBox(mode = getDesktopPanelMode()) {
+    const vw = window.innerWidth || 1200;
+    const vh = window.innerHeight || 800;
+    const maxW = Math.max(CV_PANEL_MIN_W, vw - CV_PANEL_MARGIN * 2);
+    const maxH = Math.max(CV_PANEL_MIN_H, vh - CV_PANEL_MARGIN * 2);
+    if (mode === 'dock') {
+        const w = Math.min(CV_PANEL_DOCK_W, maxW);
+        const h = maxH;
+        return { x: CV_PANEL_MARGIN, y: CV_PANEL_MARGIN, w, h };
+    }
+    const w = Math.min(CV_PANEL_MODAL_W, Math.round(vw * 0.95), maxW);
+    const h = Math.min(CV_PANEL_MODAL_H, Math.round(vh * 0.92), maxH);
+    return { x: Math.round((vw - w) / 2), y: Math.round((vh - h) / 2), w, h };
+}
+
+function getLayoutForWidth(width, s = loadSettings()) {
+    if (s.desktopCardLayout === 'narrow') return 'narrow';
+    if (s.desktopCardLayout === 'wide') return 'wide';
+    return width >= CV_PANEL_WIDE_AT ? 'wide' : 'narrow';
+}
+
+function applyPanelLayoutClass(panel, layout) {
+    const l = layout === 'wide' ? 'wide' : 'narrow';
+    panel.classList.toggle('cv-layout-wide', l === 'wide');
+    panel.classList.toggle('cv-layout-narrow', l !== 'wide');
+    return l;
+}
+
+function applyPanelModeClasses(overlay, panel, mode) {
+    const m = mode === 'dock' ? 'dock' : 'modal';
+    overlay.classList.toggle('cv-mode-dock', m === 'dock');
+    overlay.classList.toggle('cv-mode-modal', m !== 'dock');
+    panel.classList.toggle('cv-mode-dock', m === 'dock');
+    panel.classList.toggle('cv-mode-modal', m !== 'dock');
+    return m;
+}
+
+function clampPanelBox(box) {
+    const vw = window.innerWidth || 1200;
+    const vh = window.innerHeight || 800;
+    const maxW = Math.max(CV_PANEL_MIN_W, vw - CV_PANEL_MARGIN * 2);
+    const maxH = Math.max(CV_PANEL_MIN_H, vh - CV_PANEL_MARGIN * 2);
+    const w = _clamp(Math.round(_num(box.w, CV_PANEL_MODAL_W)), CV_PANEL_MIN_W, maxW);
+    const h = _clamp(Math.round(_num(box.h, CV_PANEL_MODAL_H)), CV_PANEL_MIN_H, maxH);
+    const xMax = Math.max(CV_PANEL_MARGIN, vw - w - CV_PANEL_MARGIN);
+    const yMax = Math.max(CV_PANEL_MARGIN, vh - h - CV_PANEL_MARGIN);
+    const x = _clamp(Math.round(_num(box.x, CV_PANEL_MARGIN)), CV_PANEL_MARGIN, xMax);
+    const y = _clamp(Math.round(_num(box.y, CV_PANEL_MARGIN)), CV_PANEL_MARGIN, yMax);
+    return { x, y, w, h };
+}
+
+function applyPanelBox(panel, overlay, box, persistLayout = true) {
+    const mode = panel.classList.contains('cv-mode-dock') ? 'dock' : 'modal';
+    const fallback = getDefaultPanelBox(mode);
+    const c = clampPanelBox({ ...fallback, ...(box || {}) });
+    overlay.classList.add('cv-window-positioned');
+    panel.style.setProperty('left', c.x + 'px', 'important');
+    panel.style.setProperty('top', c.y + 'px', 'important');
+    panel.style.setProperty('width', c.w + 'px', 'important');
+    panel.style.setProperty('height', c.h + 'px', 'important');
+    panel.style.removeProperty('transform');
+    panel.style.removeProperty('transform-origin');
+    const layout = applyPanelLayoutClass(panel, getLayoutForWidth(c.w));
+    if (persistLayout) panel.dataset.cvLayout = layout;
+    return { ...c, layout };
 }
 
 function getCurrentState(panel) {
-    const left = parseFloat(panel.style.left) || 0;
-    const top  = parseFloat(panel.style.top)  || 0;
-    const m = /scale\(([0-9.]+)\)/.exec(panel.style.transform || '');
-    const scale = m ? parseFloat(m[1]) : 1;
-    return { x: left, y: top, scale };
+    const r = panel.getBoundingClientRect();
+    const x = Number.isFinite(parseFloat(panel.style.left)) ? parseFloat(panel.style.left) : r.left;
+    const y = Number.isFinite(parseFloat(panel.style.top)) ? parseFloat(panel.style.top) : r.top;
+    const w = Number.isFinite(parseFloat(panel.style.width)) ? parseFloat(panel.style.width) : r.width;
+    const h = Number.isFinite(parseFloat(panel.style.height)) ? parseFloat(panel.style.height) : r.height;
+    const layout = getLayoutForWidth(w);
+    const mode = panel.classList.contains('cv-mode-dock') ? 'dock' : 'modal';
+    return { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h), layout, mode };
 }
 
 function saveWindowStatePartial(patch) {
     const s = loadSettings();
     const cur = { ...(s.windowState || {}) };
-    // 清掉旧版本残留的 w/h/maximized 字段
-    delete cur.w; delete cur.h; delete cur.maximized;
+    delete cur.scale; delete cur.maximized;
     saveSettings({ ...s, windowState: { ...cur, ...patch } });
 }
 
-function applyWindowState(overlay, panel) {
+function normalizeWindowState(st, mode) {
+    if (!st || typeof st !== 'object') return null;
+    const box = getDefaultPanelBox(mode);
+    // 兼容旧版 {x,y,scale}：只用它估一个尺寸，不再写 transform。
+    if (typeof st.scale === 'number' && typeof st.w !== 'number') {
+        const sc = _clamp(st.scale, 0.4, 3);
+        return clampPanelBox({
+            x: _num(st.x, box.x),
+            y: _num(st.y, box.y),
+            w: box.w * sc,
+            h: box.h * sc,
+        });
+    }
+    if (typeof st.w !== 'number' || typeof st.h !== 'number') return null;
+    return clampPanelBox({
+        x: _num(st.x, box.x),
+        y: _num(st.y, box.y),
+        w: st.w,
+        h: st.h,
+    });
+}
+
+function applyWindowState(overlay, panel, modeOverride = '') {
     if (isMobileLayout()) return;
     const s = loadSettings();
-    if (s.windowFreeMode) overlay.classList.add('cv-window-free');
+    const mode = applyPanelModeClasses(overlay, panel, getDesktopPanelMode(s, modeOverride));
+    if (s.windowFreeMode || mode === 'dock') overlay.classList.add('cv-window-free');
+    else overlay.classList.remove('cv-window-free');
+
     const st = s.windowState;
-    if (st && typeof st.x === 'number' && typeof st.y === 'number' && typeof st.scale === 'number') {
-        // 在应用 transform 之前先量原生尺寸
-        ensureNativeSize(panel);
-        overlay.classList.add('cv-window-positioned');
-        applyTransform(panel, st);
+    const usableSavedState = st && (!st.mode || st.mode === mode);
+    const box = usableSavedState ? normalizeWindowState(st, mode) : null;
+    if (box || mode === 'dock') {
+        applyPanelBox(panel, overlay, box || getDefaultPanelBox(mode));
+    } else {
+        applyPanelLayoutClass(panel, getLayoutForWidth(getDefaultPanelBox(mode).w, s));
     }
 }
 
 function _ensurePositioned(overlay, panel) {
     if (overlay.classList.contains('cv-window-positioned')) return;
-    // 进入定位模式之前，面板还在 flex 居中状态，量出当前位置作为起点
     const r = panel.getBoundingClientRect();
-    ensureNativeSize(panel);
-    overlay.classList.add('cv-window-positioned');
-    applyTransform(panel, { x: Math.round(r.left), y: Math.round(r.top), scale: 1 });
+    applyPanelBox(panel, overlay, { x: r.left, y: r.top, w: r.width, h: r.height });
 }
 
 function _onPointerEnd(panel, cleanup) {
@@ -3626,10 +3789,10 @@ function _bindDrag(panel, overlay, handle) {
         const startX = e.clientX, startY = e.clientY;
         const startState = getCurrentState(panel);
         const move = (ev) => {
-            applyTransform(panel, {
+            applyPanelBox(panel, overlay, {
+                ...startState,
                 x: startState.x + (ev.clientX - startX),
                 y: startState.y + (ev.clientY - startY),
-                scale: startState.scale,
             });
         };
         const up = () => _onPointerEnd(panel, () => {
@@ -3641,25 +3804,22 @@ function _bindDrag(panel, overlay, handle) {
     });
 }
 
-function _bindScaleResize(panel, overlay, handle) {
+function _bindPanelResize(panel, overlay, handle, dir) {
     handle.addEventListener('pointerdown', (e) => {
         if (e.button !== 0) return;
         e.preventDefault();
         e.stopPropagation();
         _ensurePositioned(overlay, panel);
         const startX = e.clientX, startY = e.clientY;
-        const startState = getCurrentState(panel);
-        const { w: nativeW, h: nativeH } = ensureNativeSize(panel);
+        const start = getCurrentState(panel);
         const move = (ev) => {
             const dx = ev.clientX - startX;
             const dy = ev.clientY - startY;
-            // 取水平/垂直拖动量中较大的那个作为缩放参考，无论沿哪个方向拖都跟手
-            const delta = Math.max(dx / nativeW, dy / nativeH);
-            applyTransform(panel, {
-                x: startState.x,
-                y: startState.y,
-                scale: startState.scale + delta,
-            });
+            const next = { ...start };
+            if (dir.includes('e')) next.w = start.w + dx;
+            if (dir.includes('w')) { next.w = start.w - dx; next.x = start.x + dx; }
+            if (dir.includes('s')) next.h = start.h + dy;
+            applyPanelBox(panel, overlay, next);
         };
         const up = () => _onPointerEnd(panel, () => {
             window.removeEventListener('pointermove', move);
@@ -3673,12 +3833,13 @@ function _bindScaleResize(panel, overlay, handle) {
 function initWindowChrome(overlay, panel) {
     if (isMobileLayout()) return;
 
-    // 只保留右下角一个缩放把手
-    const seHandle = document.createElement('div');
-    seHandle.className = 'cv-resize-handle cv-rh-se';
-    seHandle.dataset.dir = 'se';
-    panel.appendChild(seHandle);
-    _bindScaleResize(panel, overlay, seHandle);
+    ['w', 'e', 'se'].forEach(dir => {
+        const handle = document.createElement('div');
+        handle.className = `cv-resize-handle cv-rh-${dir}`;
+        handle.dataset.dir = dir;
+        panel.appendChild(handle);
+        _bindPanelResize(panel, overlay, handle, dir);
+    });
 
     // 阅读模式下顶部一条窄拖动条（普通模式靠 header）
     const dragStrip = document.createElement('div');
@@ -3694,7 +3855,7 @@ function initWindowChrome(overlay, panel) {
     const onWinResize = () => {
         if (isMobileLayout()) return;
         if (!overlay.classList.contains('cv-window-positioned')) return;
-        applyTransform(panel, getCurrentState(panel));
+        applyPanelBox(panel, overlay, getCurrentState(panel), false);
     };
     window.addEventListener('resize', onWinResize);
     // v0.5.16 fix: 必须挂在 overlay（= panelEl）上，因为 closePanel 用 panelEl._cvOnResize 查找；
@@ -3716,8 +3877,9 @@ function resetWindow() {
     panel.style.removeProperty('transform-origin');
     panel.style.removeProperty('width');
     panel.style.removeProperty('height');
-    // 让下次拖动重新测量原生尺寸（视口可能已经变化）
-    delete panel._cvNative;
+    panel.classList.remove('cv-reader-expanded');
+    panel.dataset.cvLayout = '';
+    applyWindowState(panelEl, panel);
 }
 
 function parseHotkeyCombo(str) {
@@ -3959,6 +4121,33 @@ function injectSettings() {
             </div>
             <div class="inline-drawer-content">
               <div class="cv-settings-row">
+                <label for="cv_set_desktop_mode">桌面面板样式：</label>
+                <select id="cv_set_desktop_mode">
+                  <option value="modal" ${s.desktopPanelMode !== 'dock' ? 'selected' : ''}>经典居中弹窗</option>
+                  <option value="dock" ${s.desktopPanelMode === 'dock' ? 'selected' : ''}>左侧停靠栏</option>
+                </select>
+              </div>
+              <div class="cv-settings-row">
+                <label for="cv_set_card_layout">卡片布局：</label>
+                <select id="cv_set_card_layout">
+                  <option value="auto" ${s.desktopCardLayout !== 'narrow' && s.desktopCardLayout !== 'wide' ? 'selected' : ''}>自动（按面板宽度）</option>
+                  <option value="narrow" ${s.desktopCardLayout === 'narrow' ? 'selected' : ''}>紧凑单列</option>
+                  <option value="wide" ${s.desktopCardLayout === 'wide' ? 'selected' : ''}>宽屏双列</option>
+                </select>
+              </div>
+              <div class="cv-settings-row">
+                <label class="checkbox_label" for="cv_set_reader_expand">
+                  <input type="checkbox" id="cv_set_reader_expand" ${s.readerExpandMode !== 'off' ? 'checked' : ''}>
+                  <span>进入阅读模式时自动展开大屏</span>
+                </label>
+              </div>
+              <div class="cv-settings-row">
+                <label class="checkbox_label" for="cv_set_left_dock_btn">
+                  <input type="checkbox" id="cv_set_left_dock_btn" ${s.leftDockButton !== false ? 'checked' : ''}>
+                  <span>显示左侧 ChatVault 快捷入口</span>
+                </label>
+              </div>
+              <div class="cv-settings-row">
                 <label class="checkbox_label" for="cv_set_window_free">
                   <input type="checkbox" id="cv_set_window_free" ${s.windowFreeMode ? 'checked' : ''}>
                   <span>桌面自由窗口模式（去掉背景遮罩，可同时操作酒馆）</span>
@@ -3975,10 +4164,10 @@ function injectSettings() {
                 <input type="text" id="cv_set_hotkey_combo" class="text_pole" value="${escapeHtml(s.windowHotkeyCombo || 'Alt+V')}" placeholder="例：Alt+V / Ctrl+Shift+K">
               </div>
               <div class="cv-settings-row">
-                <button id="cv_set_window_reset" class="menu_button cv-inline-btn">⟲ 复位窗口位置/缩放</button>
+                <button id="cv_set_window_reset" class="menu_button cv-inline-btn">⟲ 复位窗口位置/尺寸</button>
               </div>
               <div class="cv-settings-hint">
-                🖥️ 拖标题栏移动；右下角 ⌟ 角等比缩放（0.4×–3.0×，不会破坏内部排版）；状态自动记忆。<br>
+                🖥️ 拖标题栏移动；拖左右边缘调整宽度，窄宽切换会自动改变单列/双列布局，不再等比缩放整个面板。<br>
                 ⚠️ 自定义快捷键时请避开酒馆/浏览器已用组合（如 Ctrl+S、F5）；在输入框焦点时快捷键不会触发。
               </div>
             </div>
@@ -4014,7 +4203,7 @@ function injectSettings() {
         const cur = loadSettings();
         const newTheme = e.target.value;
         saveSettings({ ...cur, theme: newTheme });
-        if (panelEl) panelEl.className = currentThemeClass();
+        if (panelEl) applyThemeClass(panelEl);
         applyCustomColors();
         // 显隐自定义配色面板
         const cdw = wrap.querySelector('#cv_color_drawer_wrap');
@@ -4207,11 +4396,32 @@ function injectSettings() {
     renderColorGrid();
 
     // 桌面窗口设置
+    wrap.querySelector('#cv_set_desktop_mode').addEventListener('change', (e) => {
+        const cur = loadSettings();
+        saveSettings({ ...cur, desktopPanelMode: e.target.value === 'dock' ? 'dock' : 'modal', windowState: null });
+        if (panelEl) resetWindow();
+    });
+    wrap.querySelector('#cv_set_card_layout').addEventListener('change', (e) => {
+        const cur = loadSettings();
+        const val = ['auto', 'narrow', 'wide'].includes(e.target.value) ? e.target.value : 'auto';
+        saveSettings({ ...cur, desktopCardLayout: val });
+        const panel = document.getElementById('chatvault_panel');
+        if (panel) applyPanelLayoutClass(panel, getLayoutForWidth(getCurrentState(panel).w));
+    });
+    wrap.querySelector('#cv_set_reader_expand').addEventListener('change', (e) => {
+        const cur = loadSettings();
+        saveSettings({ ...cur, readerExpandMode: e.target.checked ? 'auto' : 'off' });
+    });
+    wrap.querySelector('#cv_set_left_dock_btn').addEventListener('change', (e) => {
+        const cur = loadSettings();
+        saveSettings({ ...cur, leftDockButton: !!e.target.checked });
+        applyDockTabState();
+    });
     wrap.querySelector('#cv_set_window_free').addEventListener('change', (e) => {
         const cur = loadSettings();
         const on = !!e.target.checked;
         saveSettings({ ...cur, windowFreeMode: on });
-        if (panelEl) panelEl.classList.toggle('cv-window-free', on);
+        if (panelEl) panelEl.classList.toggle('cv-window-free', on || panelEl.classList.contains('cv-mode-dock'));
     });
     wrap.querySelector('#cv_set_hotkey').addEventListener('change', (e) => {
         const cur = loadSettings();
@@ -4245,12 +4455,14 @@ jQuery(async () => {
          || document.getElementById('extensions_settings')) injectSettings();
         // 欢迎页按钮：等 #chat 就绪后挂 observer（observer 自己会重试）
         if (document.getElementById('chat')) applyWelcomeButtonState();
+        applyDockTabState();
 
         const cur = loadSettings();
         const needBtn = cur.enabled && !document.getElementById('chatvault_open_btn');
         const needSet = !document.getElementById('chatvault_settings');
         const needWelcomeObs = cur.enabled && cur.welcomeButton && !_cvWelcomeObserver;
-        if (needBtn || needSet || needWelcomeObs) {
+        const needDockTab = cur.enabled && cur.leftDockButton && !document.getElementById('chatvault_dock_tab');
+        if (needBtn || needSet || needWelcomeObs || needDockTab) {
             if (++_injectTries < INJECT_MAX_TRIES) {
                 setTimeout(tryInject, 500);
             } else {
