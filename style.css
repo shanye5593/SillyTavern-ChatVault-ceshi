@@ -353,6 +353,8 @@
     border: 1px solid var(--cv-border);
     border-radius: 999px;
     background: var(--cv-bg-panel);
+    color: var(--cv-accent);
+    border-color: color-mix(in srgb, var(--cv-accent, #34d399) 45%, transparent);
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
 }
 
@@ -378,6 +380,9 @@
     line-height: 1;
     font-size: 14px;
 }
+
+.cv-pagination.cv-pagination-autohide .cv-page-btn { color: var(--cv-accent); }
+.cv-pagination.cv-pagination-autohide .cv-page-btn:hover:not(:disabled) { background: var(--cv-accent-muted); }
 
 .cv-page-btn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.06); }
 .cv-page-btn:disabled { opacity: 0.3; cursor: not-allowed; }
