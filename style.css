@@ -215,7 +215,20 @@
     position: relative;
     flex: 1;
     max-width: 360px;
+    height: 36px;
     margin-left: auto;   /* v0.3.22-test: PC 端搜索框靠右贴近操作按钮，避免居中漂浮 */
+    background: var(--cv-bg-input);
+    border: 1px solid transparent;
+    border-radius: 6px;
+    overflow: hidden;
+    transition: border-color 0.15s, box-shadow 0.15s, background-color 0.15s;
+}
+.cv-search-wrap:hover:not(:focus-within) {
+    border-color: color-mix(in srgb, var(--cv-text-secondary, #888) 18%, transparent);
+}
+.cv-search-wrap:focus-within {
+    border-color: var(--cv-accent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--cv-accent, #34d399) 22%, transparent);
 }
 
 .cv-search-wrap::before {
@@ -233,30 +246,28 @@
 }
 
 .cv-search {
+    display: block;
     width: 100%;
-    height: 36px;
+    height: 100%;
     padding: 0 12px 0 32px;
-    background: var(--cv-bg-input);
+    background: transparent !important;
+    background-color: transparent !important;
     color: var(--cv-text-primary);
-    border: 1px solid transparent !important;
-    border-radius: 6px;
+    border: 0 !important;
+    border-radius: 0 !important;
     font-size: 13px;
     outline: 0 !important;
     box-shadow: none !important;
     -webkit-appearance: none;
             appearance: none;
-    transition: border-color 0.15s, box-shadow 0.15s, background-color 0.15s;
 }
 
 .cv-search::placeholder { color: var(--cv-text-tertiary); }
-.cv-search:hover:not(:focus) {
-    border-color: color-mix(in srgb, var(--cv-text-secondary, #888) 22%, transparent) !important;
-}
 .cv-search:focus,
 .cv-search:focus-visible {
-    border-color: var(--cv-accent) !important;
+    border: 0 !important;
     outline: 0 !important;
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--cv-accent, #34d399) 22%, transparent) !important;
+    box-shadow: none !important;
 }
 
 .cv-icon-btn {
