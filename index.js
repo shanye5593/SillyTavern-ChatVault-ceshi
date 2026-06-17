@@ -4118,7 +4118,7 @@ function injectSettings() {
           <div class="cv-settings-row">
             <label class="checkbox_label" for="cv_set_left_dock_btn">
               <input type="checkbox" id="cv_set_left_dock_btn" ${s.leftDockButton !== false ? 'checked' : ''}>
-              <span>启用侧边栏入口按钮</span>
+              <span>启用侧边栏入口按钮（仅 PC 端）</span>
             </label>
           </div>
           <div class="cv-settings-row">
@@ -4512,8 +4512,8 @@ jQuery(async () => {
         const cur = loadSettings();
         const needBtn = cur.enabled && !document.getElementById('chatvault_open_btn');
         const needSet = !document.getElementById('chatvault_settings');
-        const needWelcomeObs = cur.enabled && cur.welcomeButton && !_cvWelcomeObserver;
-        const needDockTab = cur.enabled && cur.leftDockButton && !document.getElementById('chatvault_dock_tab');
+        const needWelcomeObs = cur.welcomeButton && !_cvWelcomeObserver;
+        const needDockTab = cur.leftDockButton && !document.getElementById('chatvault_dock_tab');
         if (needBtn || needSet || needWelcomeObs || needDockTab) {
             if (++_injectTries < INJECT_MAX_TRIES) {
                 setTimeout(tryInject, 500);
