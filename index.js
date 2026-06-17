@@ -441,15 +441,7 @@ function renderPreviewText(el, text) {
         el.classList.add('is-empty');
         el.textContent = '（空聊天）';
     } else {
-        const span = document.createElement('span');
-        span.className = 'cv-preview-text';
-        span.textContent = makePreviewSnippet(text);
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'cv-preview-more';
-        btn.dataset.act = 'preview-full';
-        btn.textContent = '查看';
-        el.append(span, document.createTextNode(' '), btn);
+        el.textContent = makePreviewSnippet(text);
     }
 }
 
@@ -1269,7 +1261,7 @@ function renderCard(character, chat, hideCharName = false) {
                     ${meta1}
                     ${tagsHtml}
                 </div>
-                <div class="cv-preview is-loading" data-preview="1" aria-label="长按或点击查看完整预览">加载预览中…</div>
+                <div class="cv-preview is-loading" data-preview="1" aria-label="右键或长按查看完整预览">加载预览中…</div>
                 <div class="cv-fold">
                     <button class="cv-fold-btn cv-fold-primary" data-act="reader" type="button">${ICONS.book}<span>阅读模式</span></button>
                     <button class="cv-fold-btn" data-act="rules" type="button">${ICONS.gear}<span>摘取规则</span></button>
@@ -1439,23 +1431,17 @@ function bindPreviewTipEvents(card, character, fileName) {
     preview._cvPreviewTipBound = true;
 
     preview.addEventListener('click', e => {
-        if (previewTipSuppressClick) {
-            previewTipSuppressClick = false;
-            e.preventDefault();
-            e.stopPropagation();
-            return;
-        }
-        const btn = e.target.closest('.cv-preview-more');
-        if (!btn) return;
+        if (!previewTipSuppressClick) return;
+        previewTipSuppressClick = false;
         e.preventDefault();
         e.stopPropagation();
-        openPreviewTip(card, btn, character, fileName);
     });
     preview.addEventListener('contextmenu', e => {
-        if (document.getElementById('cv_preview_tip')) e.preventDefault();
+        e.preventDefault();
+        e.stopPropagation();
+        openPreviewTip(card, preview, character, fileName);
     });
     preview.addEventListener('pointerdown', e => {
-        if (e.target.closest('.cv-preview-more')) e.stopPropagation();
         if (e.pointerType !== 'touch') return;
         clearPreviewTipTimers();
         previewTipTouchStart = { x: e.clientX, y: e.clientY };

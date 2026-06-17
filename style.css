@@ -699,20 +699,6 @@
 .cv-preview.is-loading { opacity: 0.45; font-style: italic; }
 .cv-preview.is-empty { color: var(--cv-text-tertiary); font-style: italic; }
 
-.cv-preview-more {
-    display: inline;
-    margin: 0;
-    padding: 0;
-    border: 0;
-    background: transparent;
-    color: var(--cv-accent);
-    font: inherit;
-    font-weight: 600;
-    cursor: pointer;
-}
-
-.cv-preview-more:hover { text-decoration: underline; }
-
 .cv-preview-tip {
     position: fixed;
     z-index: 99999;
