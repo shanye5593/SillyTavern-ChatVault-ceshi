@@ -83,6 +83,7 @@ const DEFAULT_SETTINGS = {
     desktopCardLayout: 'auto',         // 'auto' | 'narrow' | 'wide'：按面板宽度自动单/双列，或强制指定
     readerExpandMode: 'auto',          // 'auto' | 'off'：阅读模式是否临时展开大屏
     leftDockButton: true,              // 左侧边缘 ChatVault 快捷入口
+    dockTabTop: 0.34,                  // 左侧快捷入口纵向位置（0~1，按视口高度记忆）
     windowFreeMode: false,             // 自由模式：去掉遮罩，可同时操作酒馆
     windowHotkey: false,               // 是否启用全局快捷键开关面板
     windowHotkeyCombo: 'Alt+V',        // 快捷键组合
@@ -1211,7 +1212,7 @@ function renderPagination(total, totalPages) {
         return;
     }
     el.innerHTML = `
-        <span>第 ${currentPage} / ${totalPages} 页</span>
+        <span class="cv-page-label">第 ${currentPage} / ${totalPages} 页</span>
         <button class="cv-page-btn" id="cv_prev" ${currentPage <= 1 ? 'disabled' : ''}>${ICONS.chevL}</button>
         <button class="cv-page-btn" id="cv_next" ${currentPage >= totalPages ? 'disabled' : ''}>${ICONS.chevR}</button>
     `;
@@ -3453,6 +3454,47 @@ function removeButton() {
     document.getElementById('chatvault_open_btn')?.remove();
 }
 
+function clampDockTabTop(v) {
+    return _clamp(_num(v, 0.34), 0.08, 0.82);
+}
+
+function applyDockTabTop(tab, topRatio = loadSettings().dockTabTop) {
+    tab.style.top = `${Math.round(clampDockTabTop(topRatio) * 1000) / 10}%`;
+}
+
+function bindDockTabDrag(tab) {
+    tab.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const startY = e.clientY;
+        const startTop = clampDockTabTop(loadSettings().dockTabTop);
+        let moved = false;
+        tab.setPointerCapture?.(e.pointerId);
+        tab.classList.add('is-dragging');
+        const move = (ev) => {
+            const dy = ev.clientY - startY;
+            if (Math.abs(dy) > 3) moved = true;
+            const next = clampDockTabTop(startTop + dy / Math.max(1, window.innerHeight || 1));
+            applyDockTabTop(tab, next);
+            tab.dataset.nextTop = String(next);
+        };
+        const up = (ev) => {
+            window.removeEventListener('pointermove', move);
+            window.removeEventListener('pointerup', up);
+            tab.releasePointerCapture?.(ev.pointerId);
+            tab.classList.remove('is-dragging');
+            const next = clampDockTabTop(tab.dataset.nextTop || startTop);
+            const cur = loadSettings();
+            saveSettings({ ...cur, dockTabTop: next });
+            delete tab.dataset.nextTop;
+            if (!moved) openPanel('dock');
+        };
+        window.addEventListener('pointermove', move);
+        window.addEventListener('pointerup', up);
+    });
+}
+
 function injectDockTab() {
     if (isMobileLayout()) return;
     if (document.getElementById('chatvault_dock_tab')) return;
@@ -3461,9 +3503,10 @@ function injectDockTab() {
     const tab = document.createElement('button');
     tab.id = 'chatvault_dock_tab';
     tab.type = 'button';
-    tab.title = '打开聊天档案侧栏';
+    tab.title = '打开聊天档案侧栏（可上下拖动）';
     tab.innerHTML = `<i class="fa-solid fa-book"></i><span>档案</span>`;
-    tab.onclick = (e) => { e.preventDefault(); e.stopPropagation(); openPanel('dock'); };
+    applyDockTabTop(tab, s.dockTabTop);
+    bindDockTabDrag(tab);
     document.body.appendChild(tab);
 }
 

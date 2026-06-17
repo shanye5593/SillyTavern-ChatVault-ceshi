@@ -117,9 +117,15 @@
     background: var(--SmartThemeBlurTintColor, rgba(20,22,26,0.9));
     color: var(--SmartThemeBodyColor, #e4e5e7);
     box-shadow: 4px 8px 24px rgba(0,0,0,0.28);
-    cursor: pointer;
+    cursor: grab;
+    user-select: none;
+    touch-action: none;
     font: 12px/1.1 system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
     writing-mode: horizontal-tb;
+}
+#chatvault_dock_tab.is-dragging {
+    cursor: grabbing;
+    filter: brightness(1.12);
 }
 #chatvault_dock_tab:hover {
     color: var(--cv-accent, #34d399);
@@ -232,15 +238,19 @@
     padding: 0 12px 0 32px;
     background: var(--cv-bg-input);
     color: var(--cv-text-primary);
-    border: 1px solid var(--cv-border);
+    border: 1px solid var(--cv-border-soft, var(--cv-border));
     border-radius: 6px;
     font-size: 13px;
     outline: none;
-    transition: border-color 0.15s;
+    box-shadow: none;
+    transition: border-color 0.15s, box-shadow 0.15s, background-color 0.15s;
 }
 
 .cv-search::placeholder { color: var(--cv-text-tertiary); }
-.cv-search:focus { border-color: var(--cv-accent); }
+.cv-search:focus {
+    border-color: var(--cv-accent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--cv-accent, #34d399) 22%, transparent);
+}
 
 .cv-icon-btn {
     background: transparent;
@@ -318,6 +328,14 @@
     gap: 8px;
     color: var(--cv-text-secondary);
     font-size: 13px;
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+.cv-page-label {
+    display: inline-flex;
+    align-items: center;
+    min-width: max-content;
+    font-variant-numeric: tabular-nums;
 }
 
 .cv-page-btn {
@@ -1702,9 +1720,19 @@
         margin-left: 0;
     }
     #chatvault_panel.cv-layout-narrow .cv-body { padding: 0 14px 18px; }
-    #chatvault_panel.cv-layout-narrow .cv-tabbar { padding: 10px 14px; }
+    #chatvault_panel.cv-layout-narrow .cv-tabbar {
+        padding: 10px 14px;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
     #chatvault_panel.cv-layout-narrow .cv-tabs { width: 100%; flex-wrap: wrap; }
     #chatvault_panel.cv-layout-narrow .cv-tab { flex: 1 1 42%; justify-content: center; }
+    #chatvault_panel.cv-layout-narrow .cv-pagination {
+        width: 100%;
+        justify-content: flex-end;
+        gap: 6px;
+    }
+    #chatvault_panel.cv-layout-narrow .cv-page-btn { padding: 5px 7px; }
     #chatvault_panel.cv-layout-narrow .cv-card { padding: 12px; gap: 10px; }
     #chatvault_panel.cv-layout-narrow .cv-card-avatar { width: 36px; height: 36px; }
     #chatvault_panel.cv-layout-narrow .cv-card-row {
