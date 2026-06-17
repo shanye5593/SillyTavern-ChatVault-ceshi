@@ -13,6 +13,9 @@ const THEMES = [
     { id: 'dark',   name: '夜间 Dark' },
     { id: 'light',  name: '白底 Light' },
     { id: 'coffee', name: '咖啡 Coffee' },
+    { id: 'haidi',  name: '海底' },
+    { id: 'qingyu', name: '晴雨' },
+    { id: 'danlan', name: '淡蓝' },
     { id: 'custom', name: '自定义' },
 ];
 const DEFAULT_STRIP = {
