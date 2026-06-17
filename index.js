@@ -355,6 +355,10 @@ async function deleteChat(avatar, fileName) {
 const previewCache = new Map();
 const PREVIEW_CACHE_MAX = 500;        // 软上限，超出按插入序裁掉最早 10%
 const PREVIEW_FAIL_TTL  = 10 * 60_000; // 失败 10 分钟后允许重试
+const PREVIEW_SNIPPET_MAX = 240;
+const PREVIEW_TIP_DESKTOP_DELAY = 700;
+const PREVIEW_TIP_TOUCH_DELAY = 900;
+const PREVIEW_TIP_TOUCH_MOVE = 10;
 
 function previewCacheGet(key) {
     if (!previewCache.has(key)) return { hit: false };
@@ -381,6 +385,54 @@ function previewCacheSet(key, value) {
 }
 function previewCacheMarkFail(key) {
     previewCacheSet(key, { __cvFail: Date.now() });
+}
+
+function cleanPreviewText(text) {
+    return String(text ?? '')
+        .replace(/[*_`~]+/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function findPreviewSnippetStart(text, target) {
+    const radius = 80;
+    const min = Math.max(0, target - radius);
+    const max = Math.min(text.length - 1, target + radius);
+    let best = -1;
+    const punct = '。！？!?；;，,、：:\n\r';
+    for (let i = target; i >= min; i--) {
+        if (punct.includes(text[i])) { best = i + 1; break; }
+    }
+    if (best < 0) {
+        for (let i = target + 1; i <= max; i++) {
+            if (punct.includes(text[i])) { best = i + 1; break; }
+        }
+    }
+    if (best < 0) best = target;
+    while (best < text.length && /\s/.test(text[best])) best++;
+    return Math.min(best, Math.max(0, text.length - 1));
+}
+
+function makePreviewSnippet(text, maxLen = PREVIEW_SNIPPET_MAX) {
+    const clean = cleanPreviewText(text);
+    if (!clean || clean.length <= maxLen) return clean;
+    const start = findPreviewSnippetStart(clean, Math.floor(clean.length * 0.58));
+    const end = Math.min(clean.length, start + maxLen);
+    const segment = clean.slice(start, end).trim();
+    return `...${segment}${end < clean.length ? '...' : ''}`;
+}
+
+function renderPreviewText(el, text) {
+    el.classList.remove('is-loading', 'is-empty');
+    if (text === null) {
+        el.classList.add('is-empty');
+        el.textContent = '（无法加载预览）';
+    } else if (!text) {
+        el.classList.add('is-empty');
+        el.textContent = '（空聊天）';
+    } else {
+        el.textContent = makePreviewSnippet(text);
+    }
 }
 
 async function fetchLastMessageText(character, fileName) {
@@ -557,6 +609,9 @@ let activeTab = 'recent';        // 'recent' | 'characters' | 'favorites' | 'cur
 let currentPage = 1;             // 当前 tab 内的分页
 let searchQuery = '';
 let previewObserver = null;
+let previewTipTimer = null;
+let previewTipTouchTimer = null;
+let previewTipTouchStart = null;
 
 /* ============================================================
  *  HTML 工具
@@ -755,6 +810,8 @@ function markSnapshot(isSnapshot) {
 
 function escHandler(e) {
     if (e.key !== 'Escape') return;
+    const tip = document.getElementById('cv_preview_tip');
+    if (tip) { closePreviewTip(); return; }
     // 如果有打开的 modal 先关 modal
     const modal = document.getElementById('cv_modal');
     if (modal) { modal.remove(); return; }
@@ -762,6 +819,7 @@ function escHandler(e) {
 }
 
 function closePanel() {
+    closePreviewTip();
     // 阅读模式楼层菜单可能还开着；它在 document 上挂了 mousedown/touchstart capture 监听
     // 不显式 close 会导致这两个监听器残留 + 闭包持有已 detach 的菜单节点
     closeMsgMenu();
@@ -1193,7 +1251,7 @@ function renderCard(character, chat, hideCharName = false) {
                     ${meta1}
                     ${tagsHtml}
                 </div>
-                <div class="cv-preview is-loading" data-preview="1">加载预览中…</div>
+                <div class="cv-preview is-loading" data-preview="1" aria-label="悬停或长按查看完整预览">加载预览中…</div>
                 <div class="cv-fold">
                     <button class="cv-fold-btn cv-fold-primary" data-act="reader" type="button">${ICONS.book}<span>阅读模式</span></button>
                     <button class="cv-fold-btn" data-act="rules" type="button">${ICONS.gear}<span>摘取规则</span></button>
@@ -1254,6 +1312,8 @@ function bindCardEvents() {
             };
         });
 
+        bindPreviewTipEvents(card, character, fileName);
+
         // 折叠区按钮
         card.querySelectorAll('.cv-fold-btn').forEach(btn => {
             btn.onclick = (e) => {
@@ -1283,6 +1343,131 @@ function bindCardEvents() {
     if (active) active.classList.add('is-folded-open');
 }
 
+function clearPreviewTipTimers() {
+    if (previewTipTimer) { clearTimeout(previewTipTimer); previewTipTimer = null; }
+    if (previewTipTouchTimer) { clearTimeout(previewTipTouchTimer); previewTipTouchTimer = null; }
+    previewTipTouchStart = null;
+}
+
+function closePreviewTip() {
+    clearPreviewTipTimers();
+    const tip = document.getElementById('cv_preview_tip');
+    if (tip) {
+        try { tip._cleanup && tip._cleanup(); } catch {}
+        tip.remove();
+    }
+}
+
+function schedulePreviewTipClose(delay = 120) {
+    clearPreviewTipTimers();
+    previewTipTimer = setTimeout(() => closePreviewTip(), delay);
+}
+
+function positionPreviewTip(tip, anchorEl) {
+    const anchor = anchorEl.getBoundingClientRect();
+    const rect = tip.getBoundingClientRect();
+    const vw = window.innerWidth || document.documentElement.clientWidth || 1;
+    const vh = window.innerHeight || document.documentElement.clientHeight || 1;
+    const margin = 10;
+    let left = anchor.left;
+    let top = anchor.bottom + 8;
+    if (top + rect.height > vh - margin) {
+        const above = anchor.top - rect.height - 8;
+        top = above >= margin ? above : Math.max(margin, vh - rect.height - margin);
+    }
+    if (left + rect.width > vw - margin) left = vw - rect.width - margin;
+    left = _clamp(left, margin, Math.max(margin, vw - rect.width - margin));
+    top = _clamp(top, margin, Math.max(margin, vh - rect.height - margin));
+    tip.style.left = `${Math.round(left)}px`;
+    tip.style.top = `${Math.round(top)}px`;
+}
+
+async function openPreviewTip(card, anchorEl, character, fileName, fromTouch = false) {
+    closePreviewTip();
+    if (!card?.isConnected || !anchorEl?.isConnected || !character || !fileName) return;
+    const key = metaKey(character.avatar, fileName);
+    const cached = previewCacheGet(key);
+    const text = cached.hit ? cached.value : await fetchLastMessageText(character, fileName);
+    if (!card.isConnected || !anchorEl.isConnected) return;
+    if (!fromTouch && !anchorEl.matches(':hover')) return;
+
+    const tip = document.createElement('div');
+    tip.className = 'cv-preview-tip';
+    tip.id = 'cv_preview_tip';
+    tip.textContent = text === null ? '（无法加载预览）' : (!text ? '（空聊天）' : cleanPreviewText(text));
+    tip.addEventListener('pointerenter', e => {
+        if (e.pointerType !== 'touch') clearPreviewTipTimers();
+    });
+    tip.addEventListener('pointerleave', e => {
+        if (e.pointerType !== 'touch') schedulePreviewTipClose();
+    });
+    (document.getElementById('chatvault_panel') || document.body).appendChild(tip);
+    positionPreviewTip(tip, anchorEl);
+
+    const onDocDown = (ev) => {
+        if (tip.contains(ev.target) || anchorEl.contains(ev.target)) return;
+        closePreviewTip();
+    };
+    const onClose = () => closePreviewTip();
+    setTimeout(() => {
+        if (!tip.isConnected) return;
+        document.addEventListener('mousedown', onDocDown, true);
+        document.addEventListener('touchstart', onDocDown, true);
+        document.addEventListener('scroll', onClose, true);
+        window.addEventListener('resize', onClose, true);
+        tip._cleanup = () => {
+            document.removeEventListener('mousedown', onDocDown, true);
+            document.removeEventListener('touchstart', onDocDown, true);
+            document.removeEventListener('scroll', onClose, true);
+            window.removeEventListener('resize', onClose, true);
+        };
+    }, 0);
+}
+
+function bindPreviewTipEvents(card, character, fileName) {
+    const preview = card.querySelector('.cv-preview');
+    if (!preview || preview._cvPreviewTipBound) return;
+    preview._cvPreviewTipBound = true;
+
+    preview.addEventListener('click', e => e.stopPropagation());
+    preview.addEventListener('contextmenu', e => {
+        if (document.getElementById('cv_preview_tip')) e.preventDefault();
+    });
+    preview.addEventListener('pointerenter', e => {
+        if (e.pointerType === 'touch') return;
+        clearPreviewTipTimers();
+        previewTipTimer = setTimeout(() => openPreviewTip(card, preview, character, fileName), PREVIEW_TIP_DESKTOP_DELAY);
+    });
+    preview.addEventListener('pointerleave', e => {
+        if (e.pointerType === 'touch') return;
+        closePreviewTip();
+    });
+    preview.addEventListener('pointerdown', e => {
+        e.stopPropagation();
+        if (e.pointerType !== 'touch') return;
+        clearPreviewTipTimers();
+        previewTipTouchStart = { x: e.clientX, y: e.clientY };
+        previewTipTouchTimer = setTimeout(() => {
+            previewTipTouchTimer = null;
+            previewTipTouchStart = null;
+            e.preventDefault();
+            openPreviewTip(card, preview, character, fileName, true);
+        }, PREVIEW_TIP_TOUCH_DELAY);
+    });
+    preview.addEventListener('pointermove', e => {
+        if (!previewTipTouchStart || e.pointerType !== 'touch') return;
+        const dx = e.clientX - previewTipTouchStart.x;
+        const dy = e.clientY - previewTipTouchStart.y;
+        if (Math.hypot(dx, dy) > PREVIEW_TIP_TOUCH_MOVE) clearPreviewTipTimers();
+    });
+    preview.addEventListener('pointerup', e => {
+        if (e.pointerType === 'touch' && previewTipTouchTimer) clearPreviewTipTimers();
+    });
+    preview.addEventListener('pointercancel', e => {
+        if (e.pointerType === 'touch') clearPreviewTipTimers();
+    });
+}
+
 /* ============================================================
  *  预览懒加载（IntersectionObserver）
  * ============================================================ */
@@ -1301,24 +1486,7 @@ function setupPreviewObserver() {
             const fileName = card.dataset.file;
             fetchLastMessageText(character, fileName).then(text => {
                 if (!el.isConnected) return;
-                if (text === null) {
-                    el.classList.remove('is-loading');
-                    el.classList.add('is-empty');
-                    el.textContent = '（无法加载预览）';
-                } else if (!text) {
-                    el.classList.remove('is-loading');
-                    el.classList.add('is-empty');
-                    el.textContent = '（空聊天）';
-                } else {
-                    // 简单清洗 markdown 符号，保留可读性
-                    const clean = text
-                        .replace(/[*_`~]+/g, '')
-                        .replace(/\s+/g, ' ')
-                        .trim()
-                        .slice(0, 240);
-                    el.classList.remove('is-loading');
-                    el.textContent = clean;
-                }
+                renderPreviewText(el, text);
             });
         }
     }, { root: document.getElementById('cv_body'), rootMargin: '200px' });
@@ -1334,18 +1502,11 @@ function observePreviews() {
         const cached = previewCacheGet(key);
         if (cached.hit) {
             const text = cached.value;
+            renderPreviewText(el, text);
             if (text === null) {
-                el.classList.remove('is-loading'); el.classList.add('is-empty');
-                el.textContent = '（无法加载预览）';
                 // 失败仍然挂上 observer：缓存 TTL 过期后用户重新滚动到这里就会自动重试
                 // fetchLastMessageText 内部会按 cache 状态决定是否真发请求，不会浪费流量
                 previewObserver.observe(el);
-            } else if (!text) {
-                el.classList.remove('is-loading'); el.classList.add('is-empty');
-                el.textContent = '（空聊天）';
-            } else {
-                el.classList.remove('is-loading');
-                el.textContent = text.replace(/[*_`~]+/g, '').replace(/\s+/g, ' ').trim().slice(0, 240);
             }
             return;
         }

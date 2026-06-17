@@ -693,10 +693,37 @@
     -webkit-box-orient: vertical;
     overflow: hidden;
     word-break: break-word;
+    cursor: help;
+    -webkit-touch-callout: none;
 }
 
 .cv-preview.is-loading { opacity: 0.45; font-style: italic; }
 .cv-preview.is-empty { color: var(--cv-text-tertiary); font-style: italic; }
+
+.cv-preview-tip {
+    position: fixed;
+    z-index: 99999;
+    max-width: min(520px, calc(100vw - 24px));
+    max-height: min(420px, calc(100vh - 24px));
+    overflow: auto;
+    padding: 10px 12px;
+    background: var(--cv-bg-panel);
+    color: var(--cv-text-primary);
+    border: 1px solid var(--cv-border);
+    border-radius: var(--cv-radius-card, 8px);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+    font-size: 13px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+@media (max-width: 720px) {
+    .cv-preview-tip {
+        max-width: calc(100vw - 20px);
+        max-height: min(50vh, 420px);
+    }
+}
 
 /* ---------- 高亮 ---------- */
 .cv-hl {
