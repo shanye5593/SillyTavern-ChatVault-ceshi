@@ -169,6 +169,7 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    position: relative;
 }
 
 /* 让所有内部元素继承面板字体/颜色，避免被 ST 主题污染 */
@@ -340,8 +341,23 @@
     transition: transform .2s ease, opacity .2s ease;
 }
 
+.cv-pagination.cv-pagination-autohide {
+    position: absolute;
+    left: 50%;
+    bottom: max(12px, env(safe-area-inset-bottom));
+    z-index: 12;
+    transform: translateX(-50%);
+    justify-content: center;
+    width: auto;
+    padding: 6px 10px;
+    border: 1px solid var(--cv-border);
+    border-radius: 999px;
+    background: var(--cv-bg-panel);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+}
+
 .cv-pagination.cv-pagination-autohide.is-hidden {
-    transform: translateY(-10px);
+    transform: translate(-50%, 140%);
     opacity: 0;
     pointer-events: none;
 }
@@ -1048,7 +1064,7 @@
     .cv-tab { flex: 1 1 0; padding: 8px 4px; min-width: 0; }
     .cv-status { padding: 2px 16px 6px; }
     /* 列表底部加 safe-area，避开手势条/底部地址栏 */
-    .cv-body { padding: 0 14px max(20px, env(safe-area-inset-bottom)); }
+    .cv-body { padding: 0 14px max(58px, calc(20px + env(safe-area-inset-bottom))); }
     .cv-card { padding: 12px; gap: 12px; }
     .cv-card-avatar { width: 36px; height: 36px; }
     .cv-title { font-size: 15px; }
@@ -1759,7 +1775,7 @@
         max-width: none;
         margin-left: 0;
     }
-    #chatvault_panel.cv-layout-narrow .cv-body { padding: 0 14px 18px; }
+    #chatvault_panel.cv-layout-narrow .cv-body { padding: 0 14px 58px; }
     #chatvault_panel.cv-layout-narrow .cv-tabbar {
         padding: 10px 14px;
         flex-wrap: wrap;
@@ -1768,8 +1784,7 @@
     #chatvault_panel.cv-layout-narrow .cv-tabs { width: 100%; flex-wrap: wrap; }
     #chatvault_panel.cv-layout-narrow .cv-tab { flex: 1 1 42%; justify-content: center; }
     #chatvault_panel.cv-layout-narrow .cv-pagination {
-        width: 100%;
-        justify-content: flex-start;
+        justify-content: center;
         gap: 6px;
     }
     #chatvault_panel.cv-layout-narrow .cv-page-btn { padding: 5px 7px; }
