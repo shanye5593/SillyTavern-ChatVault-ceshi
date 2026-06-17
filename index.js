@@ -3506,7 +3506,7 @@ function injectDockTab() {
     if (isMobileLayout()) return;
     if (document.getElementById('chatvault_dock_tab')) return;
     const s = loadSettings();
-    if (!s.enabled || !s.leftDockButton) return;
+    if (!s.leftDockButton) return;
     const tab = document.createElement('button');
     tab.id = 'chatvault_dock_tab';
     tab.type = 'button';
@@ -3523,7 +3523,7 @@ function removeDockTab() {
 
 function applyDockTabState() {
     const s = loadSettings();
-    if (s.enabled && s.leftDockButton) {
+    if (s.leftDockButton) {
         injectDockTab();
         const tab = document.getElementById('chatvault_dock_tab');
         if (tab) applyDockTabTop(tab);
@@ -3535,8 +3535,7 @@ function applyEnabledState() {
     if (s.enabled) injectButton();
     else {
         removeButton();
-        removeDockTab();
-        if (panelEl) closePanel();
+        if (panelEl && !s.welcomeButton && !s.leftDockButton) closePanel();
     }
     applyWelcomeButtonState();
     applyDockTabState();
@@ -3555,7 +3554,7 @@ let _cvWelcomeObserver = null;
 
 function injectWelcomeButton() {
     const s = loadSettings();
-    if (!s.enabled || !s.welcomeButton) return;
+    if (!s.welcomeButton) return;
     // 多套选择器逐级回退，兼容不同版本的酒馆欢迎消息 DOM
     // 1) 已知 ID（ST 主流欢迎页常见）：API/角色/扩展按钮
     // 2) 系统消息 mes_text 里的 menu_button（含 is_system 属性 / class 两种写法）
@@ -3649,7 +3648,7 @@ function stopWelcomeObserver() {
 
 function applyWelcomeButtonState() {
     const s = loadSettings();
-    if (s.enabled && s.welcomeButton) startWelcomeObserver();
+    if (s.welcomeButton) startWelcomeObserver();
     else stopWelcomeObserver();
 }
 
@@ -4107,13 +4106,19 @@ function injectSettings() {
           <div class="cv-settings-row">
             <label class="checkbox_label" for="cv_set_enabled">
               <input type="checkbox" id="cv_set_enabled" ${s.enabled ? 'checked' : ''}>
-              <span>启用入口按钮（在扩展菜单里显示「聊天档案」）</span>
+              <span>启用魔法棒菜单入口按钮</span>
             </label>
           </div>
           <div class="cv-settings-row">
             <label class="checkbox_label" for="cv_set_welcome_btn">
               <input type="checkbox" id="cv_set_welcome_btn" ${s.welcomeButton ? 'checked' : ''}>
               <span>在欢迎页底部显示快捷按钮（与 API 连接 / 角色管理 / 扩展程序 同排）</span>
+            </label>
+          </div>
+          <div class="cv-settings-row">
+            <label class="checkbox_label" for="cv_set_left_dock_btn">
+              <input type="checkbox" id="cv_set_left_dock_btn" ${s.leftDockButton !== false ? 'checked' : ''}>
+              <span>启用侧边栏入口按钮</span>
             </label>
           </div>
           <div class="cv-settings-row">
@@ -4192,12 +4197,6 @@ function injectSettings() {
                 <label class="checkbox_label" for="cv_set_reader_expand">
                   <input type="checkbox" id="cv_set_reader_expand" ${s.readerExpandMode !== 'off' ? 'checked' : ''}>
                   <span>进入阅读模式时自动展开大屏</span>
-                </label>
-              </div>
-              <div class="cv-settings-row">
-                <label class="checkbox_label" for="cv_set_left_dock_btn">
-                  <input type="checkbox" id="cv_set_left_dock_btn" ${s.leftDockButton !== false ? 'checked' : ''}>
-                  <span>显示左侧 ChatVault 快捷入口</span>
                 </label>
               </div>
               <div class="cv-settings-row">

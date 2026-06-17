@@ -1736,7 +1736,7 @@
     #chatvault_panel.cv-layout-narrow .cv-tab { flex: 1 1 42%; justify-content: center; }
     #chatvault_panel.cv-layout-narrow .cv-pagination {
         width: 100%;
-        justify-content: flex-start;
+        justify-content: flex-end;
         gap: 6px;
     }
     #chatvault_panel.cv-layout-narrow .cv-page-btn { padding: 5px 7px; }
