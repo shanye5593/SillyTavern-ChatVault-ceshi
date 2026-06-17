@@ -1402,7 +1402,11 @@ async function openPreviewTip(card, anchorEl, character, fileName) {
     positionPreviewTip(tip, anchorEl);
 
     const onDocDown = (ev) => {
-        if (tip.contains(ev.target) || anchorEl.contains(ev.target)) return;
+        if (tip.contains(ev.target)) return;
+        if (anchorEl.contains(ev.target)) {
+            ev.preventDefault();
+            ev.stopPropagation();
+        }
         closePreviewTip();
     };
     const onScroll = (ev) => {
