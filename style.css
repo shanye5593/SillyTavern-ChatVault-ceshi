@@ -337,6 +337,13 @@
     font-size: 13px;
     flex-shrink: 0;
     white-space: nowrap;
+    transition: transform .2s ease, opacity .2s ease;
+}
+
+.cv-pagination.cv-pagination-autohide.is-hidden {
+    transform: translateY(-10px);
+    opacity: 0;
+    pointer-events: none;
 }
 .cv-page-label {
     display: inline-flex;

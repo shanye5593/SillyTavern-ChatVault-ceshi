@@ -619,6 +619,7 @@ let activeTab = 'recent';        // 'recent' | 'characters' | 'favorites' | 'cur
 let currentPage = 1;             // 当前 tab 内的分页
 let searchQuery = '';
 let previewObserver = null;
+let paginationScrollState = null;
 let previewTipTouchTimer = null;
 let previewTipTouchStart = null;
 let previewTipSuppressClick = false;
@@ -793,6 +794,7 @@ function openPanel(modeOverride = '') {
         if (!btn) return;
         switchTab(btn.dataset.tab);
     });
+    bindPaginationAutoHide();
 
     document.addEventListener('keydown', escHandler);
 
@@ -865,6 +867,58 @@ function switchTab(tab) {
 function setStatus(text) {
     const el = document.getElementById('cv_status');
     if (el) el.textContent = text || '';
+}
+
+function shouldAutoHidePagination() {
+    const panel = document.getElementById('chatvault_panel');
+    return isMobileLayout() || !!panel?.classList.contains('cv-layout-narrow');
+}
+
+function resetPaginationAutoHide() {
+    const pagination = document.getElementById('cv_pagination');
+    if (pagination) pagination.classList.remove('is-hidden');
+    if (paginationScrollState) {
+        paginationScrollState.lastY = document.getElementById('cv_body')?.scrollTop || 0;
+        paginationScrollState.acc = 0;
+    }
+}
+
+function updatePaginationAutoHideMode() {
+    const pagination = document.getElementById('cv_pagination');
+    if (!pagination) return;
+    const enabled = shouldAutoHidePagination();
+    pagination.classList.toggle('cv-pagination-autohide', enabled);
+    if (!enabled) pagination.classList.remove('is-hidden');
+}
+
+function bindPaginationAutoHide() {
+    const body = document.getElementById('cv_body');
+    const pagination = document.getElementById('cv_pagination');
+    if (!body || !pagination || body._cvPaginationAutoHideBound) return;
+    body._cvPaginationAutoHideBound = true;
+    paginationScrollState = { lastY: body.scrollTop || 0, acc: 0 };
+    body.addEventListener('scroll', () => {
+        if (!shouldAutoHidePagination()) {
+            pagination.classList.remove('is-hidden');
+            paginationScrollState.lastY = body.scrollTop;
+            paginationScrollState.acc = 0;
+            return;
+        }
+        const y = body.scrollTop;
+        const dy = y - paginationScrollState.lastY;
+        paginationScrollState.lastY = y;
+        if (Math.abs(dy) < 2) return;
+        paginationScrollState.acc = (Math.sign(dy) === Math.sign(paginationScrollState.acc)) ? paginationScrollState.acc + dy : dy;
+        if (paginationScrollState.acc > 24) {
+            pagination.classList.add('is-hidden');
+            paginationScrollState.acc = 0;
+        } else if (paginationScrollState.acc < -24) {
+            pagination.classList.remove('is-hidden');
+            paginationScrollState.acc = 0;
+        }
+        if (body.scrollHeight - y - body.clientHeight < 80) pagination.classList.remove('is-hidden');
+        if (y < 40) pagination.classList.remove('is-hidden');
+    }, { passive: true });
 }
 
 /* ============================================================
@@ -1275,6 +1329,8 @@ function renderCard(character, chat, hideCharName = false) {
 function renderPagination(total, totalPages) {
     const el = document.getElementById('cv_pagination');
     if (!el) return;
+    resetPaginationAutoHide();
+    updatePaginationAutoHideMode();
     if (total === 0) {
         el.innerHTML = '';
         return;
@@ -3923,6 +3979,7 @@ function applyPanelBox(panel, overlay, box, persistLayout = true) {
     panel.style.removeProperty('transform');
     panel.style.removeProperty('transform-origin');
     const layout = applyPanelLayoutClass(panel, getLayoutForWidth(c.w));
+    updatePaginationAutoHideMode();
     if (persistLayout) panel.dataset.cvLayout = layout;
     return { ...c, layout };
 }
