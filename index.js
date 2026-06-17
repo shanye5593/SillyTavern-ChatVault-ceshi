@@ -355,8 +355,7 @@ async function deleteChat(avatar, fileName) {
 const previewCache = new Map();
 const PREVIEW_CACHE_MAX = 500;        // 软上限，超出按插入序裁掉最早 10%
 const PREVIEW_FAIL_TTL  = 10 * 60_000; // 失败 10 分钟后允许重试
-const PREVIEW_SNIPPET_MAX = 240;
-const PREVIEW_TIP_DESKTOP_DELAY = 700;
+const PREVIEW_SNIPPET_MAX = 160;
 const PREVIEW_TIP_TOUCH_DELAY = 900;
 const PREVIEW_TIP_TOUCH_MOVE = 10;
 
@@ -394,6 +393,16 @@ function cleanPreviewText(text) {
         .trim();
 }
 
+function cleanFullPreviewText(text) {
+    return String(text ?? '')
+        .replace(/[*_`~]+/g, '')
+        .replace(/\r\n?/g, '\n')
+        .replace(/[ \t\f\v]+/g, ' ')
+        .replace(/ *\n */g, '\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+}
+
 function findPreviewSnippetStart(text, target) {
     const radius = 80;
     const min = Math.max(0, target - radius);
@@ -424,6 +433,7 @@ function makePreviewSnippet(text, maxLen = PREVIEW_SNIPPET_MAX) {
 
 function renderPreviewText(el, text) {
     el.classList.remove('is-loading', 'is-empty');
+    el.innerHTML = '';
     if (text === null) {
         el.classList.add('is-empty');
         el.textContent = '（无法加载预览）';
@@ -431,7 +441,15 @@ function renderPreviewText(el, text) {
         el.classList.add('is-empty');
         el.textContent = '（空聊天）';
     } else {
-        el.textContent = makePreviewSnippet(text);
+        const span = document.createElement('span');
+        span.className = 'cv-preview-text';
+        span.textContent = makePreviewSnippet(text);
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'cv-preview-more';
+        btn.dataset.act = 'preview-full';
+        btn.textContent = '查看';
+        el.append(span, document.createTextNode(' '), btn);
     }
 }
 
@@ -609,9 +627,9 @@ let activeTab = 'recent';        // 'recent' | 'characters' | 'favorites' | 'cur
 let currentPage = 1;             // 当前 tab 内的分页
 let searchQuery = '';
 let previewObserver = null;
-let previewTipTimer = null;
 let previewTipTouchTimer = null;
 let previewTipTouchStart = null;
+let previewTipSuppressClick = false;
 
 /* ============================================================
  *  HTML 工具
@@ -1251,7 +1269,7 @@ function renderCard(character, chat, hideCharName = false) {
                     ${meta1}
                     ${tagsHtml}
                 </div>
-                <div class="cv-preview is-loading" data-preview="1" aria-label="悬停或长按查看完整预览">加载预览中…</div>
+                <div class="cv-preview is-loading" data-preview="1" aria-label="长按或点击查看完整预览">加载预览中…</div>
                 <div class="cv-fold">
                     <button class="cv-fold-btn cv-fold-primary" data-act="reader" type="button">${ICONS.book}<span>阅读模式</span></button>
                     <button class="cv-fold-btn" data-act="rules" type="button">${ICONS.gear}<span>摘取规则</span></button>
@@ -1344,7 +1362,6 @@ function bindCardEvents() {
 }
 
 function clearPreviewTipTimers() {
-    if (previewTipTimer) { clearTimeout(previewTipTimer); previewTipTimer = null; }
     if (previewTipTouchTimer) { clearTimeout(previewTipTouchTimer); previewTipTouchTimer = null; }
     previewTipTouchStart = null;
 }
@@ -1356,11 +1373,6 @@ function closePreviewTip() {
         try { tip._cleanup && tip._cleanup(); } catch {}
         tip.remove();
     }
-}
-
-function schedulePreviewTipClose(delay = 120) {
-    clearPreviewTipTimers();
-    previewTipTimer = setTimeout(() => closePreviewTip(), delay);
 }
 
 function positionPreviewTip(tip, anchorEl) {
@@ -1382,25 +1394,18 @@ function positionPreviewTip(tip, anchorEl) {
     tip.style.top = `${Math.round(top)}px`;
 }
 
-async function openPreviewTip(card, anchorEl, character, fileName, fromTouch = false) {
+async function openPreviewTip(card, anchorEl, character, fileName) {
     closePreviewTip();
     if (!card?.isConnected || !anchorEl?.isConnected || !character || !fileName) return;
     const key = metaKey(character.avatar, fileName);
     const cached = previewCacheGet(key);
     const text = cached.hit ? cached.value : await fetchLastMessageText(character, fileName);
     if (!card.isConnected || !anchorEl.isConnected) return;
-    if (!fromTouch && !anchorEl.matches(':hover')) return;
 
     const tip = document.createElement('div');
     tip.className = 'cv-preview-tip';
     tip.id = 'cv_preview_tip';
-    tip.textContent = text === null ? '（无法加载预览）' : (!text ? '（空聊天）' : cleanPreviewText(text));
-    tip.addEventListener('pointerenter', e => {
-        if (e.pointerType !== 'touch') clearPreviewTipTimers();
-    });
-    tip.addEventListener('pointerleave', e => {
-        if (e.pointerType !== 'touch') schedulePreviewTipClose();
-    });
+    tip.textContent = text === null ? '（无法加载预览）' : (!text ? '（空聊天）' : cleanFullPreviewText(text));
     (document.getElementById('chatvault_panel') || document.body).appendChild(tip);
     positionPreviewTip(tip, anchorEl);
 
@@ -1408,17 +1413,21 @@ async function openPreviewTip(card, anchorEl, character, fileName, fromTouch = f
         if (tip.contains(ev.target) || anchorEl.contains(ev.target)) return;
         closePreviewTip();
     };
+    const onScroll = (ev) => {
+        if (tip.contains(ev.target)) return;
+        closePreviewTip();
+    };
     const onClose = () => closePreviewTip();
     setTimeout(() => {
         if (!tip.isConnected) return;
         document.addEventListener('mousedown', onDocDown, true);
         document.addEventListener('touchstart', onDocDown, true);
-        document.addEventListener('scroll', onClose, true);
+        document.addEventListener('scroll', onScroll, true);
         window.addEventListener('resize', onClose, true);
         tip._cleanup = () => {
             document.removeEventListener('mousedown', onDocDown, true);
             document.removeEventListener('touchstart', onDocDown, true);
-            document.removeEventListener('scroll', onClose, true);
+            document.removeEventListener('scroll', onScroll, true);
             window.removeEventListener('resize', onClose, true);
         };
     }, 0);
@@ -1429,29 +1438,34 @@ function bindPreviewTipEvents(card, character, fileName) {
     if (!preview || preview._cvPreviewTipBound) return;
     preview._cvPreviewTipBound = true;
 
-    preview.addEventListener('click', e => e.stopPropagation());
+    preview.addEventListener('click', e => {
+        if (previewTipSuppressClick) {
+            previewTipSuppressClick = false;
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+        }
+        const btn = e.target.closest('.cv-preview-more');
+        if (!btn) return;
+        e.preventDefault();
+        e.stopPropagation();
+        openPreviewTip(card, btn, character, fileName);
+    });
     preview.addEventListener('contextmenu', e => {
         if (document.getElementById('cv_preview_tip')) e.preventDefault();
     });
-    preview.addEventListener('pointerenter', e => {
-        if (e.pointerType === 'touch') return;
-        clearPreviewTipTimers();
-        previewTipTimer = setTimeout(() => openPreviewTip(card, preview, character, fileName), PREVIEW_TIP_DESKTOP_DELAY);
-    });
-    preview.addEventListener('pointerleave', e => {
-        if (e.pointerType === 'touch') return;
-        closePreviewTip();
-    });
     preview.addEventListener('pointerdown', e => {
-        e.stopPropagation();
+        if (e.target.closest('.cv-preview-more')) e.stopPropagation();
         if (e.pointerType !== 'touch') return;
         clearPreviewTipTimers();
         previewTipTouchStart = { x: e.clientX, y: e.clientY };
         previewTipTouchTimer = setTimeout(() => {
             previewTipTouchTimer = null;
             previewTipTouchStart = null;
+            previewTipSuppressClick = true;
+            setTimeout(() => { previewTipSuppressClick = false; }, 500);
             e.preventDefault();
-            openPreviewTip(card, preview, character, fileName, true);
+            openPreviewTip(card, preview, character, fileName);
         }, PREVIEW_TIP_TOUCH_DELAY);
     });
     preview.addEventListener('pointermove', e => {
