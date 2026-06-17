@@ -238,18 +238,25 @@
     padding: 0 12px 0 32px;
     background: var(--cv-bg-input);
     color: var(--cv-text-primary);
-    border: 1px solid var(--cv-border-soft, var(--cv-border));
+    border: 1px solid transparent !important;
     border-radius: 6px;
     font-size: 13px;
-    outline: none;
-    box-shadow: none;
+    outline: 0 !important;
+    box-shadow: none !important;
+    -webkit-appearance: none;
+            appearance: none;
     transition: border-color 0.15s, box-shadow 0.15s, background-color 0.15s;
 }
 
 .cv-search::placeholder { color: var(--cv-text-tertiary); }
-.cv-search:focus {
-    border-color: var(--cv-accent);
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--cv-accent, #34d399) 22%, transparent);
+.cv-search:hover:not(:focus) {
+    border-color: color-mix(in srgb, var(--cv-text-secondary, #888) 22%, transparent) !important;
+}
+.cv-search:focus,
+.cv-search:focus-visible {
+    border-color: var(--cv-accent) !important;
+    outline: 0 !important;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--cv-accent, #34d399) 22%, transparent) !important;
 }
 
 .cv-icon-btn {

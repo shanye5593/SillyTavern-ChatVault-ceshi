@@ -3455,11 +3455,16 @@ function removeButton() {
 }
 
 function clampDockTabTop(v) {
-    return _clamp(_num(v, 0.34), 0.08, 0.82);
+    return _clamp(_num(v, 0.34), 0, 1);
+}
+
+function getDockTabMaxTop(tab) {
+    return Math.max(0, (window.innerHeight || 1) - (tab?.offsetHeight || 1));
 }
 
 function applyDockTabTop(tab, topRatio = loadSettings().dockTabTop) {
-    tab.style.top = `${Math.round(clampDockTabTop(topRatio) * 1000) / 10}%`;
+    const maxTop = getDockTabMaxTop(tab);
+    tab.style.top = `${Math.round(clampDockTabTop(topRatio) * maxTop)}px`;
 }
 
 function bindDockTabDrag(tab) {
@@ -3468,15 +3473,17 @@ function bindDockTabDrag(tab) {
         e.preventDefault();
         e.stopPropagation();
         const startY = e.clientY;
-        const startTop = clampDockTabTop(loadSettings().dockTabTop);
+        const startPx = tab.getBoundingClientRect().top;
         let moved = false;
         tab.setPointerCapture?.(e.pointerId);
         tab.classList.add('is-dragging');
         const move = (ev) => {
             const dy = ev.clientY - startY;
             if (Math.abs(dy) > 3) moved = true;
-            const next = clampDockTabTop(startTop + dy / Math.max(1, window.innerHeight || 1));
-            applyDockTabTop(tab, next);
+            const maxTop = getDockTabMaxTop(tab);
+            const nextPx = _clamp(startPx + dy, 0, maxTop);
+            const next = maxTop > 0 ? nextPx / maxTop : 0;
+            tab.style.top = `${Math.round(nextPx)}px`;
             tab.dataset.nextTop = String(next);
         };
         const up = (ev) => {
@@ -3484,7 +3491,7 @@ function bindDockTabDrag(tab) {
             window.removeEventListener('pointerup', up);
             tab.releasePointerCapture?.(ev.pointerId);
             tab.classList.remove('is-dragging');
-            const next = clampDockTabTop(tab.dataset.nextTop || startTop);
+            const next = clampDockTabTop(tab.dataset.nextTop || loadSettings().dockTabTop);
             const cur = loadSettings();
             saveSettings({ ...cur, dockTabTop: next });
             delete tab.dataset.nextTop;
@@ -3505,9 +3512,9 @@ function injectDockTab() {
     tab.type = 'button';
     tab.title = '打开聊天档案侧栏（可上下拖动）';
     tab.innerHTML = `<i class="fa-solid fa-book"></i><span>档案</span>`;
-    applyDockTabTop(tab, s.dockTabTop);
     bindDockTabDrag(tab);
     document.body.appendChild(tab);
+    applyDockTabTop(tab, s.dockTabTop);
 }
 
 function removeDockTab() {
@@ -3516,8 +3523,11 @@ function removeDockTab() {
 
 function applyDockTabState() {
     const s = loadSettings();
-    if (s.enabled && s.leftDockButton) injectDockTab();
-    else removeDockTab();
+    if (s.enabled && s.leftDockButton) {
+        injectDockTab();
+        const tab = document.getElementById('chatvault_dock_tab');
+        if (tab) applyDockTabTop(tab);
+    } else removeDockTab();
 }
 
 function applyEnabledState() {
