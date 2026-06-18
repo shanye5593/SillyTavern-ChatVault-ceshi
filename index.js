@@ -3351,6 +3351,29 @@ async function postImportChatFile(character, file) {
     }
 }
 
+async function postSaveChatArray(character, fileName, arr) {
+    const res = await fetch('/api/chats/save', {
+        method: 'POST',
+        headers: headers(),
+        body: JSON.stringify({
+            avatar_url: character.avatar,
+            file_name: stripExt(fileName),
+            chat: arr,
+            force: true,
+        }),
+    });
+    if (!res.ok) {
+        let msg = '';
+        try {
+            const data = await res.json();
+            msg = data?.error ? String(data.error) : JSON.stringify(data).slice(0, 120);
+        } catch {
+            msg = await res.text().then(t => t.slice(0, 120)).catch(() => '');
+        }
+        throw new Error(`HTTP ${res.status}${msg ? ' ' + msg : ''}`);
+    }
+}
+
 async function exportChatJsonl(character, fileName) {
     setStatus('正在导出 jsonl…');
     try {
@@ -3521,7 +3544,7 @@ function getOrganizerChangeSummary(state) {
 function formatOrganizerSaveSummary(fileName, state) {
     const s = getOrganizerChangeSummary(state);
     const backupText = state.backupDownloaded ? '已下载' : (state.skipBackup ? '已跳过（用户确认风险）' : '未备份');
-    return `即将保存整理结果到原聊天：\n\n文件：${withExt(fileName)}\n\n本次更改：\n- 原始楼层：${s.originalCount} 楼\n- 保存后楼层：${s.newCount} 楼\n- 删除楼层：${s.deletedCount} 楼\n- 楼层顺序：${s.orderChanged ? '已调整' : '未变化'}\n- 原文件备份：${backupText}\n\n保存前会验证当前酒馆是否支持安全覆盖原文件。确认后将写回服务器上的原聊天文件。`;
+    return `即将保存整理结果到原聊天：\n\n文件：${withExt(fileName)}\n\n本次更改：\n- 原始楼层：${s.originalCount} 楼\n- 保存后楼层：${s.newCount} 楼\n- 删除楼层：${s.deletedCount} 楼\n- 楼层顺序：${s.orderChanged ? '已调整' : '未变化'}\n- 原文件备份：${backupText}\n\n确认后会调用酒馆保存接口，写回服务器上的原聊天文件。`;
 }
 
 function getSelectedIndexes(state) {
@@ -3658,38 +3681,6 @@ function organizerRangeOrWarn(state) {
     return range;
 }
 
-function organizerTempProbeName(fileName) {
-    return `${safeChatExportBaseName(fileName)}.cv-overwrite-test-${timestampForFileName()}.jsonl`;
-}
-
-async function verifyChatImportOverwriteSupport(character, fileName, originalArr) {
-    const tempName = organizerTempProbeName(fileName);
-    const probe = `chatvault_probe_${Date.now()}`;
-    const first = originalArr.map(cloneOrganizerObject);
-    const second = originalArr.map(cloneOrganizerObject);
-    first[0] = { ...(first[0] || {}), chatvault_overwrite_probe: `${probe}_first` };
-    second[0] = { ...(second[0] || {}), chatvault_overwrite_probe: `${probe}_second` };
-
-    try {
-        setStatus('正在验证导入覆盖行为…');
-        await postImportChatFile(character, jsonlFileFromArray(first, tempName));
-        await reloadCharacterChats(character);
-        await postImportChatFile(character, jsonlFileFromArray(second, tempName));
-        await reloadCharacterChats(character);
-
-        const target = withExt(tempName);
-        const exact = (chatsByAvatar[character.avatar] || []).filter(c => withExt(c?.file_name) === target);
-        const readBack = await fetchFullChat(character, tempName);
-        const ok = exact.length === 1 && readBack?.[0]?.chatvault_overwrite_probe === `${probe}_second`;
-        if (!ok) throw new Error('导入同名文件没有表现为稳定覆盖');
-        return true;
-    } finally {
-        try {
-            await deleteChat(character.avatar, tempName);
-            await reloadCharacterChats(character);
-        } catch { /* 临时验证文件清理失败时交给用户手动检查 */ }
-    }
-}
 
 function renderOrganizerBody(wrap, state, character, fileName) {
     const body = wrap.querySelector('#cv_org_body');
@@ -3947,7 +3938,7 @@ function renderOrganizerBody(wrap, state, character, fileName) {
             toastr.warning('请先备份原文件，或勾选“我理解风险，跳过备份”');
             return;
         }
-        try { await saveArrangedChatByImportOverwrite(character, fileName, state); }
+        try { await saveArrangedChatToOriginal(character, fileName, state); }
         catch (e) {
             console.error('[ChatVault] 整理写回失败', e);
             setStatus(`❌ 整理写回失败: ${e.message}`);
@@ -3961,7 +3952,7 @@ function closeOrganizerModal(state) {
     closeModal();
 }
 
-async function saveArrangedChatByImportOverwrite(character, fileName, state) {
+async function saveArrangedChatToOriginal(character, fileName, state) {
     if (!state.dirty) { toastr.info('没有需要写回的整理修改'); return; }
     const arranged = buildArrangedChatArray(state);
     const originalCount = Math.max(0, state.originalArr.length - 1);
@@ -3976,9 +3967,8 @@ async function saveArrangedChatByImportOverwrite(character, fileName, state) {
     const skipWarn = state.skipBackup && !state.backupDownloaded ? '\n\n你选择跳过备份。如果保存后发现问题，ChatVault 无法帮你恢复原聊天。' : '';
     if (!confirm(`${formatOrganizerSaveSummary(fileName, state)}${emptyWarn}${skipWarn}\n\n确认保存？`)) return;
 
-    await verifyChatImportOverwriteSupport(character, fileName, state.originalArr);
     setStatus('正在写回整理后的聊天…');
-    await postImportChatFile(character, jsonlFileFromArray(arranged, withExt(fileName)));
+    await postSaveChatArray(character, fileName, arranged);
     await reloadCharacterChats(character);
 
     const readBack = await fetchFullChat(character, fileName);
