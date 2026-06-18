@@ -1095,6 +1095,8 @@
     align-items: center;
     justify-content: center;
     width: 100%;
+    max-width: 112px;
+    box-sizing: border-box;
     padding: 6px 10px;
     border: 1px solid color-mix(in srgb, var(--cv-accent) 42%, var(--cv-border));
     border-radius: 8px;
