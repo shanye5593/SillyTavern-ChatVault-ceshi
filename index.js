@@ -388,6 +388,9 @@ function previewCacheMarkFail(key) {
 
 function cleanPreviewText(text) {
     return String(text ?? '')
+        .replace(/<thinking[^>]*>[\s\S]*?<\/thinking>/gi, '')
+        .replace(/<think[^>]*>[\s\S]*?<\/think>/gi, '')
+        .replace(/<!--[\s\S]*?-->/g, '')
         .replace(/[*_`~]+/g, '')
         .replace(/\s+/g, ' ')
         .trim();
@@ -1442,18 +1445,14 @@ function positionPreviewTip(tip, anchorEl) {
     tip.style.top = `${Math.round(top)}px`;
 }
 
-async function openPreviewTip(card, anchorEl, character, fileName) {
+function openTextPreviewTip(anchorEl, text, emptyText = '（空消息）') {
     closePreviewTip();
-    if (!card?.isConnected || !anchorEl?.isConnected || !character || !fileName) return;
-    const key = metaKey(character.avatar, fileName);
-    const cached = previewCacheGet(key);
-    const text = cached.hit ? cached.value : await fetchLastMessageText(character, fileName);
-    if (!card.isConnected || !anchorEl.isConnected) return;
+    if (!anchorEl?.isConnected) return;
 
     const tip = document.createElement('div');
     tip.className = 'cv-preview-tip';
     tip.id = 'cv_preview_tip';
-    tip.textContent = text === null ? '（无法加载预览）' : (!text ? '（空聊天）' : cleanFullPreviewText(text));
+    tip.textContent = text === null ? emptyText : (cleanFullPreviewText(text) || emptyText);
     (document.getElementById('chatvault_panel') || document.body).appendChild(tip);
     positionPreviewTip(tip, anchorEl);
 
@@ -1469,39 +1468,53 @@ async function openPreviewTip(card, anchorEl, character, fileName) {
         if (tip.contains(ev.target)) return;
         closePreviewTip();
     };
+    const onKey = (ev) => {
+        if (ev.key === 'Escape') closePreviewTip();
+    };
     const onClose = () => closePreviewTip();
     setTimeout(() => {
         if (!tip.isConnected) return;
         document.addEventListener('mousedown', onDocDown, true);
         document.addEventListener('touchstart', onDocDown, true);
+        document.addEventListener('keydown', onKey, true);
         document.addEventListener('scroll', onScroll, true);
         window.addEventListener('resize', onClose, true);
         tip._cleanup = () => {
             document.removeEventListener('mousedown', onDocDown, true);
             document.removeEventListener('touchstart', onDocDown, true);
+            document.removeEventListener('keydown', onKey, true);
             document.removeEventListener('scroll', onScroll, true);
             window.removeEventListener('resize', onClose, true);
         };
     }, 0);
 }
 
-function bindPreviewTipEvents(card, character, fileName) {
-    const preview = card.querySelector('.cv-preview');
-    if (!preview || preview._cvPreviewTipBound) return;
-    preview._cvPreviewTipBound = true;
+async function openPreviewTip(card, anchorEl, character, fileName) {
+    closePreviewTip();
+    if (!card?.isConnected || !anchorEl?.isConnected || !character || !fileName) return;
+    const key = metaKey(character.avatar, fileName);
+    const cached = previewCacheGet(key);
+    const text = cached.hit ? cached.value : await fetchLastMessageText(character, fileName);
+    if (!card.isConnected || !anchorEl.isConnected) return;
+    openTextPreviewTip(anchorEl, text, text === null ? '（无法加载预览）' : '（空聊天）');
+}
 
-    preview.addEventListener('click', e => {
+function bindTextPreviewTipEvents(anchorEl, openTip) {
+    if (!anchorEl || anchorEl._cvTextPreviewTipBound) return;
+    anchorEl._cvTextPreviewTipBound = true;
+
+    anchorEl.addEventListener('click', e => {
         if (!previewTipSuppressClick) return;
         previewTipSuppressClick = false;
         e.preventDefault();
         e.stopPropagation();
     });
-    preview.addEventListener('contextmenu', e => {
+    anchorEl.addEventListener('contextmenu', e => {
         e.preventDefault();
         e.stopPropagation();
-        openPreviewTip(card, preview, character, fileName);
+        openTip();
     });
-    preview.addEventListener('pointerdown', e => {
+    anchorEl.addEventListener('pointerdown', e => {
         if (e.pointerType !== 'touch') return;
         clearPreviewTipTimers();
         previewTipTouchStart = { x: e.clientX, y: e.clientY };
@@ -1511,21 +1524,28 @@ function bindPreviewTipEvents(card, character, fileName) {
             previewTipSuppressClick = true;
             setTimeout(() => { previewTipSuppressClick = false; }, 500);
             e.preventDefault();
-            openPreviewTip(card, preview, character, fileName);
+            openTip();
         }, PREVIEW_TIP_TOUCH_DELAY);
     });
-    preview.addEventListener('pointermove', e => {
+    anchorEl.addEventListener('pointermove', e => {
         if (!previewTipTouchStart || e.pointerType !== 'touch') return;
         const dx = e.clientX - previewTipTouchStart.x;
         const dy = e.clientY - previewTipTouchStart.y;
         if (Math.hypot(dx, dy) > PREVIEW_TIP_TOUCH_MOVE) clearPreviewTipTimers();
     });
-    preview.addEventListener('pointerup', e => {
+    anchorEl.addEventListener('pointerup', e => {
         if (e.pointerType === 'touch' && previewTipTouchTimer) clearPreviewTipTimers();
     });
-    preview.addEventListener('pointercancel', e => {
+    anchorEl.addEventListener('pointercancel', e => {
         if (e.pointerType === 'touch') clearPreviewTipTimers();
     });
+}
+
+function bindPreviewTipEvents(card, character, fileName) {
+    const preview = card.querySelector('.cv-preview');
+    if (!preview || preview._cvPreviewTipBound) return;
+    preview._cvPreviewTipBound = true;
+    bindTextPreviewTipEvents(preview, () => openPreviewTip(card, preview, character, fileName));
 }
 
 /* ============================================================
@@ -3439,16 +3459,8 @@ function cloneOrganizerObject(obj) {
     catch { return obj; }
 }
 
-function cleanOrganizerPreview(text, maxLen = 120) {
-    const s = String(text ?? '')
-        .replace(/<thinking[^>]*>[\s\S]*?<\/thinking>/gi, '')
-        .replace(/<think[^>]*>[\s\S]*?<\/think>/gi, '')
-        .replace(/<!--[\s\S]*?-->/g, '')
-        .replace(/[*_`~]+/g, '')
-        .replace(/\s+/g, ' ')
-        .trim();
-    if (!s) return '（空消息）';
-    return s.length > maxLen ? `${s.slice(0, maxLen).trim()}…` : s;
+function cleanOrganizerPreview(text, maxLen = 140) {
+    return makePreviewSnippet(text, maxLen) || '（空消息）';
 }
 
 function getOrganizerMessageKind(msg) {
@@ -3480,7 +3492,6 @@ function buildOrganizerState(arr, character) {
         selectedIds: new Set(),
         lastSelectedIndex: null,
         dirty: false,
-        downloaded: false,
         backupDownloaded: false,
         skipBackup: false,
         page: 1,
@@ -3555,7 +3566,6 @@ function setOrganizerPageForIndex(state, index) {
 
 function finishOrganizerMutation(state, start, end) {
     state.dirty = true;
-    state.downloaded = false;
     if (state.rows.length) {
         const s = Math.min(Math.max(0, start), state.rows.length - 1);
         const e = Math.min(Math.max(s, end), state.rows.length - 1);
@@ -3714,7 +3724,7 @@ function renderOrganizerBody(wrap, state, character, fileName) {
                     <span class="cv-organizer-kind is-${kind}">${escapeHtml(kind)}</span>
                     <span>${escapeHtml(name)}</span>
                 </div>
-                <div class="cv-organizer-preview">${escapeHtml(preview)}</div>
+                <div class="cv-organizer-preview" aria-label="右键或长按查看完整预览">${escapeHtml(preview)}</div>
             </div>
         `;
     }).join('') : '<div class="cv-organizer-empty">没有可整理楼层</div>';
@@ -3728,7 +3738,7 @@ function renderOrganizerBody(wrap, state, character, fileName) {
             <div><strong>${escapeHtml(withExt(fileName))}</strong></div>
             <div>原 ${originalCount} 楼 / 当前 ${currentCount} 楼${deletedCount > 0 ? ` / 已移除 ${deletedCount} 楼` : ''}</div>
         </div>
-        <div class="cv-organizer-warning">整理只改弹窗内预览。可拖拽当前页楼层调整顺序；跨页移动请用“移动到第 N 楼”。下载或“备份后尝试写回”前，不会修改服务器聊天文件。</div>
+        <div class="cv-organizer-warning">整理结果只在弹窗内预览。写回前请先“备份原文件”，再点“保存更改”；保存时会二次确认并验证覆盖结果。当前页可拖拽，跨页请用“移动到第 N 楼”。</div>
         <div class="cv-organizer-range">
             <span>选择</span>
             <input id="cv_org_start" type="number" min="1" max="${Math.max(1, currentCount)}" placeholder="起始" />
@@ -3752,7 +3762,6 @@ function renderOrganizerBody(wrap, state, character, fileName) {
     actions.innerHTML = `
         <label class="cv-organizer-skip-backup"><input id="cv_org_skip_backup" type="checkbox" ${state.skipBackup ? 'checked' : ''} /> 我理解风险，跳过备份</label>
         <button class="cv-btn" id="cv_org_close" type="button">关闭</button>
-        <button class="cv-btn" id="cv_org_export" type="button" ${!currentCount && !state.dirty ? 'disabled' : ''}>导出结果</button>
         <button class="cv-btn" id="cv_org_backup" type="button">备份原文件</button>
         <button class="cv-btn cv-btn-primary" id="cv_org_write" type="button" ${!state.dirty || (!state.backupDownloaded && !state.skipBackup) ? 'disabled' : ''}>保存更改</button>
     `;
@@ -3792,6 +3801,10 @@ function renderOrganizerBody(wrap, state, character, fileName) {
         };
         const check = rowEl.querySelector('input');
         if (check) check.onchange = () => rowEl.click();
+        const previewEl = rowEl.querySelector('.cv-organizer-preview');
+        if (previewEl) {
+            bindTextPreviewTipEvents(previewEl, () => openTextPreviewTip(previewEl, state.rows[Number(rowEl.dataset.i)]?.msg?.mes, '（空消息）'));
+        }
         rowEl.ondragstart = (e) => {
             const i = Number(rowEl.dataset.i);
             if (!state.selectedIds.has(state.rows[i]?.id)) selectOrganizerIndexes(state, i, i);
@@ -3903,13 +3916,6 @@ function renderOrganizerBody(wrap, state, character, fileName) {
     const skipBackup = actions.querySelector('#cv_org_skip_backup');
     if (skipBackup) skipBackup.onchange = () => { state.skipBackup = skipBackup.checked; rerender(); };
     actions.querySelector('#cv_org_close').onclick = () => closeOrganizerModal(state);
-    actions.querySelector('#cv_org_export').onclick = () => {
-        downloadChatArrayJsonl(buildArrangedChatArray(state), fileName, `arranged-${timestampForFileName()}`);
-        state.downloaded = true;
-        setStatus('✓ 已导出整理结果');
-        toastr.success('已导出整理结果');
-        rerender();
-    };
     actions.querySelector('#cv_org_backup').onclick = () => {
         downloadChatArrayJsonl(state.originalArr, fileName, `cvbak-${timestampForFileName()}`);
         state.backupDownloaded = true;
