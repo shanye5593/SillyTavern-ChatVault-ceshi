@@ -4,7 +4,7 @@
  * https://github.com/shanye5593/SillyTavern-ChatVault
  */
 
-const VERSION = '0.5.26';
+const VERSION = '0.5.27';
 const STORAGE_KEY = 'st-chatvault-meta';
 const SETTINGS_KEY = 'st-chatvault-settings';
 const PAGE_SIZE = 50;
@@ -569,7 +569,33 @@ async function newChatFor(character) {
     }
 }
 
-async function jumpToChat(character, fileName) {
+function findRealChatMessageEl(idx) {
+    const selectors = [
+        `#chat .mes[mesid="${idx}"]`,
+        `#chat .mes[data-mesid="${idx}"]`,
+        `.mes[mesid="${idx}"]`,
+        `.mes[data-mesid="${idx}"]`,
+    ];
+    for (const sel of selectors) {
+        const el = document.querySelector(sel);
+        if (el) return el;
+    }
+    return null;
+}
+
+async function scrollRealChatToFloor(idx) {
+    const ok = await waitFor(() => !!findRealChatMessageEl(idx), 8000, 80);
+    const el = ok ? findRealChatMessageEl(idx) : null;
+    if (!el) {
+        toastr.warning(`已打开聊天，但未找到 #${idx} 楼，请稍后手动滚动`);
+        return;
+    }
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    el.classList.add('cv-st-jump-highlight');
+    setTimeout(() => el.classList.remove('cv-st-jump-highlight'), 1800);
+}
+
+async function jumpToChat(character, fileName, opts = {}) {
     try {
         const ctx = SillyTavern.getContext();
         const candidates = ctx.characters
@@ -602,6 +628,7 @@ async function jumpToChat(character, fileName) {
         } else {
             toastr.warning('已切换角色，但当前 ST 版本无法直接打开指定聊天，请手动选择');
         }
+        if (Number.isInteger(opts.floorIdx)) await scrollRealChatToFloor(opts.floorIdx);
     } catch (e) {
         console.error('[ChatVault] 跳转失败', e);
         toastr.error(`跳转失败: ${e.message}`);
@@ -2154,7 +2181,7 @@ function renderReader() {
                 : `<div class="cv-reader-msg-avatar">${escapeHtml((m.who||'C').slice(0,1))}</div>`);
         const _bmHit = (readerState.character && readerState.fileName)
             ? !!findBookmark(readerState.character.avatar, readerState.fileName, m.idx) : false;
-        const _floorTitle = _bmHit ? '已有书签 · 点击编辑 / 删除' : '点击添加书签';
+        const _floorTitle = _bmHit ? '已有书签 · 打开楼层菜单' : '打开楼层菜单';
         return `
             <div class="cv-reader-msg ${m.is_user ? 'is-user' : 'is-char'}${_bmHit ? ' has-bookmark' : ''}" data-mes-idx="${m.idx}">
                 <div class="cv-reader-msg-head">
@@ -2315,9 +2342,16 @@ function openMsgMenu(msgEl, x, y) {
     const menu = document.createElement('div');
     menu.className = 'cv-msg-menu';
     menu.id = 'cv_msg_menu';
-    menu.innerHTML = exist
+    const bookmarkHtml = exist
         ? `<button data-act="edit" type="button">${ICONS.edit}<span>编辑书签</span></button><button data-act="del" type="button" class="cv-msg-menu-danger">${ICONS.trash}<span>删除书签</span></button>`
         : `<button data-act="add" type="button">${ICONS.bookmarkPlus}<span>添加书签到 #${idx}</span></button>`;
+    menu.innerHTML = `
+        <button data-act="reader-go" type="button">${ICONS.book}<span>阅读模式跳到楼层…</span></button>
+        <button data-act="chat-here" type="button">${ICONS.jump}<span>在酒馆打开 #${idx}</span></button>
+        <button data-act="chat-go" type="button">${ICONS.msg}<span>在酒馆跳到楼层…</span></button>
+        <div class="cv-msg-menu-sep" aria-hidden="true"></div>
+        ${bookmarkHtml}
+    `;
     // 挂在 chatvault_panel 内部，才能继承 .cv-theme-* 配色变量；落到 body 会变黑块
     (document.getElementById('chatvault_panel') || document.body).appendChild(menu);
     const rect = menu.getBoundingClientRect();
@@ -2337,7 +2371,10 @@ function openMsgMenu(msgEl, x, y) {
             e.stopPropagation();
             const act = b.dataset.act;
             closeMsgMenu();
-            if (act === 'add' || act === 'edit') openBookmarkModal(idx, exist);
+            if (act === 'reader-go') openFloorJumpModal('reader', idx);
+            else if (act === 'chat-here') jumpToChat(character, fileName, { floorIdx: idx });
+            else if (act === 'chat-go') openFloorJumpModal('chat', idx);
+            else if (act === 'add' || act === 'edit') openBookmarkModal(idx, exist);
             else if (act === 'del') {
                 removeBookmark(character.avatar, fileName, idx);
                 try { toastr.success(`已删除 #${idx} 书签`); } catch {}
@@ -2374,7 +2411,7 @@ function refreshBookmarkUI(idx) {
         const btn = msgEl.querySelector('.cv-reader-msg-floor');
         if (btn) {
             btn.classList.toggle('is-bm', hit);
-            btn.title = hit ? '已有书签 · 点击编辑 / 删除' : '点击添加书签';
+            btn.title = hit ? '已有书签 · 打开楼层菜单' : '打开楼层菜单';
             btn.innerHTML = (hit ? ICONS.bookmark : '')
                 + `<span class="cv-floor-num">${hit ? '' : '#'}${idx}</span>`;
         }
@@ -2384,6 +2421,81 @@ function refreshBookmarkUI(idx) {
         const panel = document.getElementById('cv_reader_settings');
         if (panel) renderReaderSettings(panel);
     }
+}
+
+function getReaderMaxFloor() {
+    const arr = readerState.arr;
+    if (!Array.isArray(arr)) return -1;
+    return arr.slice(1).length - 1;
+}
+
+function jumpReaderToFloor(idx) {
+    const maxFloor = getReaderMaxFloor();
+    if (!Number.isInteger(idx) || idx < 0 || idx > maxFloor) {
+        toastr.warning(maxFloor >= 0 ? `请输入 0-${maxFloor} 之间的楼层号` : '当前没有可跳转楼层');
+        return;
+    }
+    readerState.page = Math.floor(idx / READER_PAGE_SIZE) + 1;
+    readerState.settingsOpen = false;
+    renderReader();
+    requestAnimationFrame(() => {
+        const stage = document.querySelector('.cv-reader-stage');
+        const target = document.querySelector(`.cv-reader-msg[data-mes-idx="${idx}"]`);
+        if (stage && target) stage.scrollTop = Math.max(0, target.offsetTop - 16);
+    });
+}
+
+function openFloorJumpModal(mode, defaultIdx) {
+    const { character, fileName, arr } = readerState;
+    if (!character || !fileName || !Array.isArray(arr)) return;
+    const maxFloor = arr.slice(1).length - 1;
+    if (maxFloor < 0) { toastr.warning('当前没有可跳转楼层'); return; }
+    const safeDefault = Math.min(Math.max(0, Number(defaultIdx) || 0), maxFloor);
+    const isChat = mode === 'chat';
+    closeModal();
+    const wrap = document.createElement('div');
+    wrap.className = 'cv-modal-backdrop';
+    wrap.id = 'cv_modal';
+    wrap.innerHTML = `
+        <div class="cv-modal" onclick="event.stopPropagation()">
+            <button class="cv-modal-close" id="cv_floor_jump_close" type="button" title="关闭">${ICONS.close}</button>
+            <h3>${isChat ? '酒馆聊天跳转楼层' : '阅读模式跳转楼层'}</h3>
+            <div class="cv-modal-body">
+                <div class="cv-field">
+                    <label>楼层号</label>
+                    <input type="number" id="cv_floor_jump_input" min="0" max="${maxFloor}" value="${safeDefault}" />
+                    <div class="cv-field-hint">请输入 0-${maxFloor} 之间的楼层号</div>
+                </div>
+            </div>
+            <div class="cv-modal-actions">
+                <button class="cv-btn" id="cv_floor_jump_cancel" type="button">取消</button>
+                <button class="cv-btn cv-btn-primary" id="cv_floor_jump_go" type="button">跳转</button>
+            </div>
+        </div>
+    `;
+    wrap.onclick = closeModal;
+    document.getElementById('chatvault_panel').appendChild(wrap);
+    setTimeout(() => { const i = document.getElementById('cv_floor_jump_input'); if (i) { i.focus(); i.select(); } }, 0);
+    document.getElementById('cv_floor_jump_close').onclick = closeModal;
+    document.getElementById('cv_floor_jump_cancel').onclick = closeModal;
+    const go = () => {
+        const raw = String(document.getElementById('cv_floor_jump_input')?.value || '').trim();
+        const idx = Number(raw);
+        if (!raw || !Number.isInteger(idx) || idx < 0 || idx > maxFloor) {
+            toastr.warning(`请输入 0-${maxFloor} 之间的楼层号`);
+            return;
+        }
+        closeModal();
+        if (isChat) jumpToChat(character, fileName, { floorIdx: idx });
+        else jumpReaderToFloor(idx);
+    };
+    document.getElementById('cv_floor_jump_go').onclick = go;
+    wrap.querySelectorAll('input').forEach(inp => {
+        inp.onkeydown = (e) => {
+            if (e.key === 'Enter') go();
+            else if (e.key === 'Escape') closeModal();
+        };
+    });
 }
 
 function openBookmarkModal(idx, existing) {

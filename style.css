@@ -845,7 +845,9 @@
     height: 36px;
     padding: 0 12px;
     background: var(--cv-bg-input);
-    color: var(--cv-text-primary);
+    color: var(--cv-text-primary) !important;
+    -webkit-text-fill-color: var(--cv-text-primary);
+    caret-color: var(--cv-text-primary);
     border: 1px solid var(--cv-border);
     border-radius: 6px;
     font-size: 13px;
@@ -2633,7 +2635,7 @@
 .cv-msg-menu {
     position: fixed;
     z-index: 99999;
-    min-width: 168px;
+    min-width: 210px;
     background: var(--cv-bg-panel);
     color: var(--cv-text-primary);
     border: 1px solid var(--cv-border);
@@ -2667,9 +2669,20 @@
     color: var(--cv-accent);
 }
 .cv-msg-menu button:hover svg { opacity: 1; }
+.cv-msg-menu-sep {
+    height: 1px;
+    margin: 4px;
+    background: var(--cv-border);
+    opacity: 0.8;
+}
 .cv-msg-menu button.cv-msg-menu-danger:hover {
     background: var(--cv-danger-bg);
     color: var(--cv-danger);
+}
+
+#chat .mes.cv-st-jump-highlight {
+    outline: 2px solid var(--SmartThemeQuoteColor, #34d399);
+    outline-offset: 2px;
 }
 
 /* —— 设置面板「书签」分组 —— */
