@@ -930,8 +930,34 @@
     color: var(--cv-text-secondary);
     font-size: 12px;
 }
+.cv-organizer-help-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin: 8px 0 10px;
+    color: var(--cv-text-tertiary);
+    font-size: 12px;
+}
+.cv-organizer-help-toggle {
+    width: 20px;
+    height: 20px;
+    border-radius: 999px;
+    border: 1px solid var(--cv-border);
+    background: transparent;
+    color: var(--cv-text-secondary);
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1;
+}
+.cv-organizer-help-toggle:hover,
+.cv-organizer-help-toggle.is-open {
+    border-color: var(--cv-accent);
+    color: var(--cv-accent);
+    background: var(--cv-accent-muted);
+}
 .cv-organizer-warning {
-    margin: 10px 0;
+    margin: 0 0 10px;
     padding: 8px 10px;
     border: 1px solid var(--cv-border-soft);
     border-radius: 8px;
@@ -940,6 +966,7 @@
     font-size: 12px;
     line-height: 1.5;
 }
+.cv-organizer-warning[hidden] { display: none !important; }
 .cv-organizer-range,
 .cv-organizer-toolbar {
     display: flex;
@@ -947,6 +974,14 @@
     flex-wrap: wrap;
     gap: 8px;
     margin-bottom: 10px;
+}
+.cv-organizer-movebar,
+.cv-organizer-editbar {
+    width: 100%;
+}
+.cv-organizer-editbar {
+    padding-top: 8px;
+    border-top: 1px solid var(--cv-border-soft);
 }
 .cv-organizer-range span {
     font-size: 12px;
@@ -1062,7 +1097,20 @@
     color: var(--cv-text-primary);
     font-size: 12px;
     line-height: 1.4;
+    border: none;
+    background: transparent;
+    padding: 0;
+    text-align: left;
+    cursor: pointer;
+    font-family: inherit;
 }
+.cv-organizer-preview:hover { color: var(--cv-accent); }
+.cv-organizer-preview-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.cv-organizer-preview-action { display: none; }
 .cv-organizer-empty {
     padding: 28px 12px;
     text-align: center;
@@ -1358,13 +1406,22 @@
     .cv-organizer-preview {
         grid-area: preview;
         grid-column: auto;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
         margin-top: 2px;
-        white-space: normal;
-        display: -webkit-box;
-        -webkit-line-clamp: 2;
-        -webkit-box-orient: vertical;
-        line-height: 1.45;
+        padding: 6px 10px;
+        border: 1px solid color-mix(in srgb, var(--cv-accent) 42%, var(--cv-border));
+        border-radius: 8px;
+        background: var(--cv-accent-muted);
+        color: var(--cv-accent);
+        text-align: center;
+        white-space: nowrap;
+        line-height: 1.35;
     }
+    .cv-organizer-preview-text { display: none; }
+    .cv-organizer-preview-action { display: inline; }
     #cv_org_actions {
         flex-wrap: wrap;
     }
@@ -2087,6 +2144,39 @@
         justify-content: flex-end;
         opacity: 1;
     }
+    #chatvault_panel.cv-layout-narrow .cv-organizer-row {
+        grid-template-columns: 28px 58px minmax(0, 1fr);
+        grid-template-areas:
+            "check index speaker"
+            "preview preview preview";
+        align-items: start;
+        gap: 4px 8px;
+    }
+    #chatvault_panel.cv-layout-narrow .cv-organizer-check { grid-area: check; }
+    #chatvault_panel.cv-layout-narrow .cv-organizer-index { grid-area: index; }
+    #chatvault_panel.cv-layout-narrow .cv-organizer-speaker {
+        grid-area: speaker;
+        grid-column: auto;
+    }
+    #chatvault_panel.cv-layout-narrow .cv-organizer-preview {
+        grid-area: preview;
+        grid-column: auto;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        margin-top: 2px;
+        padding: 6px 10px;
+        border: 1px solid color-mix(in srgb, var(--cv-accent) 42%, var(--cv-border));
+        border-radius: 8px;
+        background: var(--cv-accent-muted);
+        color: var(--cv-accent);
+        text-align: center;
+        white-space: nowrap;
+        line-height: 1.35;
+    }
+    #chatvault_panel.cv-layout-narrow .cv-organizer-preview-text { display: none; }
+    #chatvault_panel.cv-layout-narrow .cv-organizer-preview-action { display: inline; }
 }
 
 /* v0.3.21-test: header 右侧两个图标按钮放进一个 flex 容器，避免被 space-between 推开 */

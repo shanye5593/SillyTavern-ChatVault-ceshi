@@ -3499,6 +3499,7 @@ function buildOrganizerState(arr, character) {
         draggingRange: null,
         dragOverIndex: null,
         dragOverSide: '',
+        helpOpen: false,
     };
 }
 
@@ -3724,7 +3725,10 @@ function renderOrganizerBody(wrap, state, character, fileName) {
                     <span class="cv-organizer-kind is-${kind}">${escapeHtml(kind)}</span>
                     <span>${escapeHtml(name)}</span>
                 </div>
-                <div class="cv-organizer-preview" aria-label="右键或长按查看完整预览">${escapeHtml(preview)}</div>
+                <button class="cv-organizer-preview" type="button" aria-label="预览第 ${i + 1} 楼完整消息" title="点击查看完整消息">
+                    <span class="cv-organizer-preview-text">${escapeHtml(preview)}</span>
+                    <span class="cv-organizer-preview-action">预览消息</span>
+                </button>
             </div>
         `;
     }).join('') : '<div class="cv-organizer-empty">没有可整理楼层</div>';
@@ -3738,7 +3742,11 @@ function renderOrganizerBody(wrap, state, character, fileName) {
             <div><strong>${escapeHtml(withExt(fileName))}</strong></div>
             <div>原 ${originalCount} 楼 / 当前 ${currentCount} 楼${deletedCount > 0 ? ` / 已移除 ${deletedCount} 楼` : ''}</div>
         </div>
-        <div class="cv-organizer-warning">整理结果只在弹窗内预览。写回前请先“备份原文件”，再点“保存更改”；保存时会二次确认并验证覆盖结果。当前页可拖拽，跨页请用“移动到第 N 楼”。</div>
+        <div class="cv-organizer-help-row">
+            <button class="cv-organizer-help-toggle${state.helpOpen ? ' is-open' : ''}" id="cv_org_help" type="button" aria-expanded="${state.helpOpen ? 'true' : 'false'}" title="整理说明">?</button>
+            <span>整理说明</span>
+        </div>
+        <div class="cv-organizer-warning" id="cv_org_help_body" ${state.helpOpen ? '' : 'hidden'}>整理结果只在弹窗内预览。写回前请先“备份原文件”，再点“保存更改”；保存时会二次确认并验证覆盖结果。当前页可拖拽，跨页请用“移动到第 N 楼”。</div>
         <div class="cv-organizer-range">
             <span>选择</span>
             <input id="cv_org_start" type="number" min="1" max="${Math.max(1, currentCount)}" placeholder="起始" />
@@ -3747,10 +3755,12 @@ function renderOrganizerBody(wrap, state, character, fileName) {
             <button class="cv-btn" id="cv_org_apply" type="button">选择</button>
             <button class="cv-btn" id="cv_org_clear" type="button">取消</button>
         </div>
-        <div class="cv-organizer-toolbar">
+        <div class="cv-organizer-toolbar cv-organizer-movebar">
             <button class="cv-btn" id="cv_org_up" type="button" ${!range || range.start <= 0 ? 'disabled' : ''}>上移</button>
             <button class="cv-btn" id="cv_org_down" type="button" ${!range || range.end >= currentCount - 1 ? 'disabled' : ''}>下移</button>
             <span class="cv-organizer-move-target">移动到第 <input id="cv_org_move_floor" type="number" min="1" max="${Math.max(1, currentCount)}" placeholder="楼层" /> 楼 <button class="cv-btn" id="cv_org_move_to" type="button" ${!range ? 'disabled' : ''}>移动</button></span>
+        </div>
+        <div class="cv-organizer-toolbar cv-organizer-editbar">
             <button class="cv-btn cv-btn-danger" id="cv_org_delete" type="button" ${!range ? 'disabled' : ''}>删除选中</button>
             <button class="cv-btn" id="cv_org_reset" type="button" ${!state.dirty ? 'disabled' : ''}>重置修改</button>
         </div>
@@ -3786,7 +3796,7 @@ function renderOrganizerBody(wrap, state, character, fileName) {
 
     body.querySelectorAll('.cv-organizer-row').forEach(rowEl => {
         rowEl.onclick = (e) => {
-            if (e.target.closest('input')) return;
+            if (e.target.closest('input, button')) return;
             const i = Number(rowEl.dataset.i);
             if (e.shiftKey && state.lastSelectedIndex != null) {
                 selectOrganizerIndexes(state, Math.min(state.lastSelectedIndex, i), Math.max(state.lastSelectedIndex, i));
@@ -3803,7 +3813,13 @@ function renderOrganizerBody(wrap, state, character, fileName) {
         if (check) check.onchange = () => rowEl.click();
         const previewEl = rowEl.querySelector('.cv-organizer-preview');
         if (previewEl) {
-            bindTextPreviewTipEvents(previewEl, () => openTextPreviewTip(previewEl, state.rows[Number(rowEl.dataset.i)]?.msg?.mes, '（空消息）'));
+            const openOrganizerPreview = () => openTextPreviewTip(previewEl, state.rows[Number(rowEl.dataset.i)]?.msg?.mes, '（空消息）');
+            previewEl.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                openOrganizerPreview();
+            };
+            bindTextPreviewTipEvents(previewEl, openOrganizerPreview);
         }
         rowEl.ondragstart = (e) => {
             const i = Number(rowEl.dataset.i);
@@ -3912,6 +3928,9 @@ function renderOrganizerBody(wrap, state, character, fileName) {
         if (e.key === 'Enter') jumpPage(Number(pageInput.value));
     };
     if (pageInput) pageInput.onchange = () => jumpPage(Number(pageInput.value));
+
+    const helpBtn = body.querySelector('#cv_org_help');
+    if (helpBtn) helpBtn.onclick = () => { state.helpOpen = !state.helpOpen; rerender({ keepScroll: true }); };
 
     const skipBackup = actions.querySelector('#cv_org_skip_backup');
     if (skipBackup) skipBackup.onchange = () => { state.skipBackup = skipBackup.checked; rerender(); };
