@@ -1390,18 +1390,13 @@
     }
     .cv-organizer-row {
         grid-template-columns: 28px 58px minmax(0, 1fr);
-        grid-template-areas:
-            "check index speaker"
-            "preview preview preview";
-        align-items: start;
+        grid-template-areas: "check index preview";
+        align-items: center;
         gap: 4px 8px;
     }
     .cv-organizer-check { grid-area: check; }
     .cv-organizer-index { grid-area: index; }
-    .cv-organizer-speaker {
-        grid-area: speaker;
-        grid-column: auto;
-    }
+    .cv-organizer-speaker { display: none; }
     .cv-organizer-preview {
         grid-area: preview;
         grid-column: auto;
@@ -1409,7 +1404,7 @@
         align-items: center;
         justify-content: center;
         width: 100%;
-        margin-top: 2px;
+        margin-top: 0;
         padding: 6px 10px;
         border: 1px solid color-mix(in srgb, var(--cv-accent) 42%, var(--cv-border));
         border-radius: 8px;
@@ -2145,18 +2140,13 @@
     }
     #chatvault_panel.cv-layout-narrow .cv-organizer-row {
         grid-template-columns: 28px 58px minmax(0, 1fr);
-        grid-template-areas:
-            "check index speaker"
-            "preview preview preview";
-        align-items: start;
+        grid-template-areas: "check index preview";
+        align-items: center;
         gap: 4px 8px;
     }
     #chatvault_panel.cv-layout-narrow .cv-organizer-check { grid-area: check; }
     #chatvault_panel.cv-layout-narrow .cv-organizer-index { grid-area: index; }
-    #chatvault_panel.cv-layout-narrow .cv-organizer-speaker {
-        grid-area: speaker;
-        grid-column: auto;
-    }
+    #chatvault_panel.cv-layout-narrow .cv-organizer-speaker { display: none; }
     #chatvault_panel.cv-layout-narrow .cv-organizer-preview {
         grid-area: preview;
         grid-column: auto;
@@ -2164,7 +2154,7 @@
         align-items: center;
         justify-content: center;
         width: 100%;
-        margin-top: 2px;
+        margin-top: 0;
         padding: 6px 10px;
         border: 1px solid color-mix(in srgb, var(--cv-accent) 42%, var(--cv-border));
         border-radius: 8px;
