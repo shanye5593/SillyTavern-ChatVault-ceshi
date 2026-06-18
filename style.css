@@ -1110,6 +1110,16 @@
     opacity: 0.45;
     cursor: not-allowed;
 }
+.cv-organizer-skip-backup {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-right: auto;
+    color: var(--cv-text-tertiary);
+    font-size: 12px;
+    line-height: 1.4;
+}
+.cv-organizer-skip-backup input { accent-color: var(--cv-danger); }
 .cv-export-row {
     display: flex;
     flex-wrap: wrap;
@@ -1348,6 +1358,7 @@
     #cv_org_actions {
         flex-wrap: wrap;
     }
+    .cv-organizer-skip-backup,
     #cv_org_actions .cv-btn {
         flex: 1 1 100%;
     }

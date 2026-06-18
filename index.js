@@ -3481,6 +3481,8 @@ function buildOrganizerState(arr, character) {
         lastSelectedIndex: null,
         dirty: false,
         downloaded: false,
+        backupDownloaded: false,
+        skipBackup: false,
         page: 1,
         pageSize: ORGANIZER_PAGE_SIZE,
         draggingRange: null,
@@ -3491,6 +3493,23 @@ function buildOrganizerState(arr, character) {
 
 function buildArrangedChatArray(state) {
     return [cloneOrganizerObject(state.meta), ...state.rows.map(r => cloneOrganizerObject(r.msg))];
+}
+
+function getOrganizerChangeSummary(state) {
+    const arranged = buildArrangedChatArray(state);
+    const originalCount = Math.max(0, state.originalArr.length - 1);
+    const newCount = Math.max(0, arranged.length - 1);
+    const deletedCount = Math.max(0, originalCount - newCount);
+    const originalMsgs = state.originalArr.slice(1).map(o => JSON.stringify(o));
+    const arrangedMsgs = arranged.slice(1).map(o => JSON.stringify(o));
+    const orderChanged = originalMsgs.length !== arrangedMsgs.length || originalMsgs.some((s, i) => s !== arrangedMsgs[i]);
+    return { originalCount, newCount, deletedCount, orderChanged };
+}
+
+function formatOrganizerSaveSummary(fileName, state) {
+    const s = getOrganizerChangeSummary(state);
+    const backupText = state.backupDownloaded ? '已下载' : (state.skipBackup ? '已跳过（用户确认风险）' : '未备份');
+    return `即将保存整理结果到原聊天：\n\n文件：${withExt(fileName)}\n\n本次更改：\n- 原始楼层：${s.originalCount} 楼\n- 保存后楼层：${s.newCount} 楼\n- 删除楼层：${s.deletedCount} 楼\n- 楼层顺序：${s.orderChanged ? '已调整' : '未变化'}\n- 原文件备份：${backupText}\n\n保存前会验证当前酒馆是否支持安全覆盖原文件。确认后将写回服务器上的原聊天文件。`;
 }
 
 function getSelectedIndexes(state) {
@@ -3731,9 +3750,11 @@ function renderOrganizerBody(wrap, state, character, fileName) {
     `;
 
     actions.innerHTML = `
+        <label class="cv-organizer-skip-backup"><input id="cv_org_skip_backup" type="checkbox" ${state.skipBackup ? 'checked' : ''} /> 我理解风险，跳过备份</label>
         <button class="cv-btn" id="cv_org_close" type="button">关闭</button>
-        <button class="cv-btn" id="cv_org_download" type="button" ${!currentCount && !state.dirty ? 'disabled' : ''}>下载整理后 JSONL</button>
-        <button class="cv-btn cv-btn-primary" id="cv_org_write" type="button" ${!state.dirty ? 'disabled' : ''}>备份后尝试写回原文件</button>
+        <button class="cv-btn" id="cv_org_export" type="button" ${!currentCount && !state.dirty ? 'disabled' : ''}>导出结果</button>
+        <button class="cv-btn" id="cv_org_backup" type="button">备份原文件</button>
+        <button class="cv-btn cv-btn-primary" id="cv_org_write" type="button" ${!state.dirty || (!state.backupDownloaded && !state.skipBackup) ? 'disabled' : ''}>保存更改</button>
     `;
 
     const rerender = (opts = {}) => {
@@ -3879,15 +3900,28 @@ function renderOrganizerBody(wrap, state, character, fileName) {
     };
     if (pageInput) pageInput.onchange = () => jumpPage(Number(pageInput.value));
 
+    const skipBackup = actions.querySelector('#cv_org_skip_backup');
+    if (skipBackup) skipBackup.onchange = () => { state.skipBackup = skipBackup.checked; rerender(); };
     actions.querySelector('#cv_org_close').onclick = () => closeOrganizerModal(state);
-    actions.querySelector('#cv_org_download').onclick = () => {
+    actions.querySelector('#cv_org_export').onclick = () => {
         downloadChatArrayJsonl(buildArrangedChatArray(state), fileName, `arranged-${timestampForFileName()}`);
         state.downloaded = true;
-        setStatus('✓ 已下载整理后 JSONL');
-        toastr.success('已下载整理后 JSONL');
+        setStatus('✓ 已导出整理结果');
+        toastr.success('已导出整理结果');
+        rerender();
+    };
+    actions.querySelector('#cv_org_backup').onclick = () => {
+        downloadChatArrayJsonl(state.originalArr, fileName, `cvbak-${timestampForFileName()}`);
+        state.backupDownloaded = true;
+        setStatus('✓ 已备份原文件');
+        toastr.success('已备份原文件');
         rerender();
     };
     actions.querySelector('#cv_org_write').onclick = async () => {
+        if (!state.backupDownloaded && !state.skipBackup) {
+            toastr.warning('请先备份原文件，或勾选“我理解风险，跳过备份”');
+            return;
+        }
         try { await saveArrangedChatByImportOverwrite(character, fileName, state); }
         catch (e) {
             console.error('[ChatVault] 整理写回失败', e);
@@ -3909,9 +3943,13 @@ async function saveArrangedChatByImportOverwrite(character, fileName, state) {
     const newCount = Math.max(0, arranged.length - 1);
     const deletedCount = originalCount - newCount;
 
-    downloadChatArrayJsonl(state.originalArr, fileName, `cvbak-${timestampForFileName()}`);
+    if (!state.backupDownloaded && !state.skipBackup) {
+        toastr.warning('请先备份原文件，或勾选“我理解风险，跳过备份”');
+        return;
+    }
     const emptyWarn = newCount === 0 ? '\n\n注意：整理后聊天将没有任何消息楼层。' : '';
-    if (!confirm(`即将尝试写回「${withExt(fileName)}」。\n\n原 ${originalCount} 楼，整理后 ${newCount} 楼${deletedCount > 0 ? `，移除 ${deletedCount} 楼` : ''}。\n已先下载原始备份 JSONL。\n\n写回前会用临时文件验证当前 SillyTavern 的导入同名文件是否为覆盖行为；验证失败则不会写回。${emptyWarn}\n\n确定继续？`)) return;
+    const skipWarn = state.skipBackup && !state.backupDownloaded ? '\n\n你选择跳过备份。如果保存后发现问题，ChatVault 无法帮你恢复原聊天。' : '';
+    if (!confirm(`${formatOrganizerSaveSummary(fileName, state)}${emptyWarn}${skipWarn}\n\n确认保存？`)) return;
 
     await verifyChatImportOverwriteSupport(character, fileName, state.originalArr);
     setStatus('正在写回整理后的聊天…');
