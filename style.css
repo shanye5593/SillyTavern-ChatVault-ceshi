@@ -1391,23 +1391,26 @@
         flex-wrap: wrap;
     }
     .cv-organizer-row {
-        grid-template-columns: 28px 58px minmax(0, 1fr);
-        grid-template-areas: "check index preview";
+        grid-template-columns: 26px 50px minmax(0, 1fr) auto;
+        grid-template-areas: "check index speaker preview";
         align-items: center;
         gap: 4px 8px;
     }
     .cv-organizer-check { grid-area: check; }
     .cv-organizer-index { grid-area: index; }
-    .cv-organizer-speaker { display: none; }
+    .cv-organizer-speaker {
+        grid-area: speaker;
+        grid-column: auto;
+        min-width: 0;
+    }
     .cv-organizer-preview {
         grid-area: preview;
         grid-column: auto;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 100%;
+        flex: 0 0 auto;
+        width: auto;
+        max-width: 88px;
         margin-top: 0;
-        padding: 6px 10px;
+        padding: 6px 8px;
         border: 1px solid color-mix(in srgb, var(--cv-accent) 42%, var(--cv-border));
         border-radius: 8px;
         background: var(--cv-accent-muted);
@@ -2141,23 +2144,26 @@
         opacity: 1;
     }
     #chatvault_panel.cv-layout-narrow .cv-organizer-row {
-        grid-template-columns: 28px 58px minmax(0, 1fr);
-        grid-template-areas: "check index preview";
+        grid-template-columns: 26px 50px minmax(0, 1fr) auto;
+        grid-template-areas: "check index speaker preview";
         align-items: center;
         gap: 4px 8px;
     }
     #chatvault_panel.cv-layout-narrow .cv-organizer-check { grid-area: check; }
     #chatvault_panel.cv-layout-narrow .cv-organizer-index { grid-area: index; }
-    #chatvault_panel.cv-layout-narrow .cv-organizer-speaker { display: none; }
+    #chatvault_panel.cv-layout-narrow .cv-organizer-speaker {
+        grid-area: speaker;
+        grid-column: auto;
+        min-width: 0;
+    }
     #chatvault_panel.cv-layout-narrow .cv-organizer-preview {
         grid-area: preview;
         grid-column: auto;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 100%;
+        flex: 0 0 auto;
+        width: auto;
+        max-width: 88px;
         margin-top: 0;
-        padding: 6px 10px;
+        padding: 6px 8px;
         border: 1px solid color-mix(in srgb, var(--cv-accent) 42%, var(--cv-border));
         border-radius: 8px;
         background: var(--cv-accent-muted);
