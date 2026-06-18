@@ -3715,14 +3715,12 @@ function renderOrganizerBody(wrap, state, character, fileName) {
             <input id="cv_org_start" type="number" min="1" max="${Math.max(1, currentCount)}" placeholder="起始" />
             <span>到</span>
             <input id="cv_org_end" type="number" min="1" max="${Math.max(1, currentCount)}" placeholder="结束" />
-            <button class="cv-btn" id="cv_org_apply" type="button">应用选择</button>
-            <button class="cv-btn" id="cv_org_clear" type="button">清空选择</button>
+            <button class="cv-btn" id="cv_org_apply" type="button">选择</button>
+            <button class="cv-btn" id="cv_org_clear" type="button">取消</button>
         </div>
         <div class="cv-organizer-toolbar">
             <button class="cv-btn" id="cv_org_up" type="button" ${!range || range.start <= 0 ? 'disabled' : ''}>上移</button>
             <button class="cv-btn" id="cv_org_down" type="button" ${!range || range.end >= currentCount - 1 ? 'disabled' : ''}>下移</button>
-            <button class="cv-btn" id="cv_org_top" type="button" ${!range || range.start <= 0 ? 'disabled' : ''}>置顶</button>
-            <button class="cv-btn" id="cv_org_bottom" type="button" ${!range || range.end >= currentCount - 1 ? 'disabled' : ''}>置底</button>
             <span class="cv-organizer-move-target">移动到第 <input id="cv_org_move_floor" type="number" min="1" max="${Math.max(1, currentCount)}" placeholder="楼层" /> 楼 <button class="cv-btn" id="cv_org_move_to" type="button" ${!range ? 'disabled' : ''}>移动</button></span>
             <button class="cv-btn cv-btn-danger" id="cv_org_delete" type="button" ${!range ? 'disabled' : ''}>删除选中</button>
             <button class="cv-btn" id="cv_org_reset" type="button" ${!state.dirty ? 'disabled' : ''}>重置修改</button>
@@ -3738,7 +3736,15 @@ function renderOrganizerBody(wrap, state, character, fileName) {
         <button class="cv-btn cv-btn-primary" id="cv_org_write" type="button" ${!state.dirty ? 'disabled' : ''}>备份后尝试写回原文件</button>
     `;
 
-    const rerender = () => renderOrganizerBody(wrap, state, character, fileName);
+    const rerender = (opts = {}) => {
+        const list = body.querySelector('.cv-organizer-list');
+        const keepScrollTop = opts.keepScroll && list ? list.scrollTop : null;
+        renderOrganizerBody(wrap, state, character, fileName);
+        if (keepScrollTop != null) {
+            const nextList = wrap.querySelector('.cv-organizer-list');
+            if (nextList) nextList.scrollTop = keepScrollTop;
+        }
+    };
     const applyMove = (fn) => {
         const r = organizerRangeOrWarn(state);
         if (!r) return;
@@ -3761,7 +3767,7 @@ function renderOrganizerBody(wrap, state, character, fileName) {
                 else state.selectedIds.add(id);
                 state.lastSelectedIndex = i;
             }
-            rerender();
+            rerender({ keepScroll: true });
         };
         const check = rowEl.querySelector('input');
         if (check) check.onchange = () => rowEl.click();
@@ -3830,8 +3836,6 @@ function renderOrganizerBody(wrap, state, character, fileName) {
     body.querySelector('#cv_org_clear').onclick = () => { state.selectedIds.clear(); state.lastSelectedIndex = null; rerender(); };
     body.querySelector('#cv_org_up').onclick = () => applyMove(moveOrganizerBlockUp);
     body.querySelector('#cv_org_down').onclick = () => applyMove(moveOrganizerBlockDown);
-    body.querySelector('#cv_org_top').onclick = () => applyMove(moveOrganizerBlockToTop);
-    body.querySelector('#cv_org_bottom').onclick = () => applyMove(moveOrganizerBlockToBottom);
     body.querySelector('#cv_org_move_to').onclick = () => {
         const r = organizerRangeOrWarn(state);
         if (!r) return;
