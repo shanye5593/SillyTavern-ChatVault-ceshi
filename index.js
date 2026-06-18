@@ -3284,13 +3284,58 @@ function downloadBlob(blob, filename) {
     setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 0);
 }
 
+function chatArrayToJsonl(arr) {
+    return (Array.isArray(arr) ? arr : []).map(o => JSON.stringify(o)).join('\n') + '\n';
+}
+
+function safeChatExportBaseName(fileName) {
+    return stripExt(fileName).replace(/[\\/:*?"<>|]/g, '_') || 'chat';
+}
+
+function timestampForFileName() {
+    const d = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+}
+
+function downloadChatArrayJsonl(arr, fileName, suffix = '') {
+    const safeName = safeChatExportBaseName(fileName);
+    const name = suffix ? `${safeName}.${suffix}.jsonl` : `${safeName}.jsonl`;
+    downloadBlob(new Blob([chatArrayToJsonl(arr)], { type: 'application/x-jsonlines' }), name);
+}
+
+function jsonlFileFromArray(arr, fileName) {
+    return new File([chatArrayToJsonl(arr)], withExt(fileName), { type: 'application/x-jsonlines' });
+}
+
+async function postImportChatFile(character, file) {
+    const ctx = SillyTavern.getContext();
+    const userName = ctx.name1 || ctx.user?.name || 'User';
+    const fd = new FormData();
+    fd.append('avatar_url', character.avatar);
+    fd.append('file_type', 'jsonl');
+    fd.append('user_name', userName);
+    fd.append('character_name', character.name || 'Character');
+    // ST 全局 multer 配置是 .single('avatar')，只允许这一个文件字段。
+    fd.append('avatar', file, file.name);
+
+    const reqHeaders = headers();
+    // multipart 不能手动设 Content-Type
+    delete reqHeaders['Content-Type'];
+    delete reqHeaders['content-type'];
+
+    const res = await fetch('/api/chats/import', { method: 'POST', headers: reqHeaders, body: fd });
+    if (!res.ok) {
+        const txt = await res.text().catch(() => '');
+        throw new Error(`HTTP ${res.status} ${txt.slice(0, 120)}`);
+    }
+}
+
 async function exportChatJsonl(character, fileName) {
     setStatus('正在导出 jsonl…');
     try {
         const arr = await fetchFullChat(character, fileName);
-        const text = arr.map(o => JSON.stringify(o)).join('\n') + '\n';
-        const safeName = stripExt(fileName).replace(/[\\/:*?"<>|]/g, '_');
-        downloadBlob(new Blob([text], { type: 'application/x-jsonlines' }), `${safeName}.jsonl`);
+        downloadChatArrayJsonl(arr, fileName);
         setStatus('✓ 已导出 jsonl');
     } catch (e) {
         setStatus(`❌ 导出失败: ${e.message}`);
@@ -3354,27 +3399,7 @@ async function importChatToCharacter(character, file) {
     }
     setStatus('正在导入…');
     try {
-        const ctx = SillyTavern.getContext();
-        const userName = ctx.name1 || ctx.user?.name || 'User';
-        const fd = new FormData();
-        fd.append('avatar_url', character.avatar);
-        fd.append('file_type', 'jsonl');
-        fd.append('user_name', userName);
-        fd.append('character_name', character.name || 'Character');
-        // ST 全局 multer 配置是 .single('avatar')，只允许这一个文件字段。
-        // 之前多塞一个 'file' 会触发 multer LIMIT_UNEXPECTED_FILE → 500
-        fd.append('avatar', file, file.name);
-
-        const reqHeaders = headers();
-        // multipart 不能手动设 Content-Type
-        delete reqHeaders['Content-Type'];
-        delete reqHeaders['content-type'];
-
-        const res = await fetch('/api/chats/import', { method: 'POST', headers: reqHeaders, body: fd });
-        if (!res.ok) {
-            const txt = await res.text().catch(() => '');
-            throw new Error(`HTTP ${res.status} ${txt.slice(0, 120)}`);
-        }
+        await postImportChatFile(character, file);
         toastr.success(`已导入到「${character.name || '当前角色'}」`);
         setStatus('✓ 已导入');
         // 刷新该角色的聊天列表
@@ -3398,6 +3423,385 @@ async function reloadCharacterChats(character) {
         const list = Array.isArray(data) ? data : (data ? Object.values(data) : []);
         chatsByAvatar[character.avatar] = list;
     } catch { /* 忽略 */ }
+}
+
+/* ============================================================
+ *  聊天楼层整理
+ * ============================================================ */
+
+function cloneOrganizerObject(obj) {
+    try {
+        if (typeof structuredClone === 'function') return structuredClone(obj);
+    } catch {}
+    try { return JSON.parse(JSON.stringify(obj)); }
+    catch { return obj; }
+}
+
+function cleanOrganizerPreview(text, maxLen = 120) {
+    const s = String(text ?? '')
+        .replace(/<thinking[^>]*>[\s\S]*?<\/thinking>/gi, '')
+        .replace(/<think[^>]*>[\s\S]*?<\/think>/gi, '')
+        .replace(/<!--[\s\S]*?-->/g, '')
+        .replace(/[*_`~]+/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    if (!s) return '（空消息）';
+    return s.length > maxLen ? `${s.slice(0, maxLen).trim()}…` : s;
+}
+
+function getOrganizerMessageKind(msg) {
+    if (msg?.is_system) return 'system';
+    if (msg?.is_user) return 'user';
+    if (msg && typeof msg.mes === 'string') return 'char';
+    return 'unknown';
+}
+
+function getOrganizerMessageName(msg, character, meta) {
+    if (msg?.name && msg.name !== 'unused') return msg.name;
+    if (msg?.is_user) return meta?.user_name && meta.user_name !== 'unused' ? meta.user_name : '用户';
+    return character?.name || meta?.character_name || '角色';
+}
+
+function buildOrganizerState(arr, character) {
+    const originalArr = (Array.isArray(arr) ? arr : []).map(cloneOrganizerObject);
+    const meta = cloneOrganizerObject(originalArr[0] || {});
+    const rows = originalArr.slice(1).map((msg, i) => ({
+        id: `org_${i + 1}`,
+        originalIndex: i + 1,
+        msg: cloneOrganizerObject(msg),
+    }));
+    return {
+        character,
+        originalArr,
+        meta,
+        rows,
+        selectedIds: new Set(),
+        lastSelectedIndex: null,
+        dirty: false,
+        downloaded: false,
+    };
+}
+
+function buildArrangedChatArray(state) {
+    return [cloneOrganizerObject(state.meta), ...state.rows.map(r => cloneOrganizerObject(r.msg))];
+}
+
+function getSelectedIndexes(state) {
+    return state.rows
+        .map((r, i) => state.selectedIds.has(r.id) ? i : -1)
+        .filter(i => i >= 0)
+        .sort((a, b) => a - b);
+}
+
+function getSelectedContiguousRange(state) {
+    const indexes = getSelectedIndexes(state);
+    if (!indexes.length) return null;
+    for (let i = 1; i < indexes.length; i++) {
+        if (indexes[i] !== indexes[i - 1] + 1) return null;
+    }
+    return { start: indexes[0], end: indexes[indexes.length - 1] };
+}
+
+function selectOrganizerIndexes(state, start, end) {
+    state.selectedIds.clear();
+    for (let i = start; i <= end; i++) {
+        if (state.rows[i]) state.selectedIds.add(state.rows[i].id);
+    }
+    state.lastSelectedIndex = end;
+}
+
+function moveOrganizerBlockUp(rows, start, end) {
+    if (start <= 0) return { changed: false, start, end };
+    const before = rows[start - 1];
+    const block = rows.slice(start, end + 1);
+    rows.splice(start - 1, end - start + 2, ...block, before);
+    return { changed: true, start: start - 1, end: end - 1 };
+}
+
+function moveOrganizerBlockDown(rows, start, end) {
+    if (end >= rows.length - 1) return { changed: false, start, end };
+    const after = rows[end + 1];
+    const block = rows.slice(start, end + 1);
+    rows.splice(start, end - start + 2, after, ...block);
+    return { changed: true, start: start + 1, end: end + 1 };
+}
+
+function moveOrganizerBlockToTop(rows, start, end) {
+    if (start <= 0) return { changed: false, start, end };
+    const block = rows.splice(start, end - start + 1);
+    rows.unshift(...block);
+    return { changed: true, start: 0, end: block.length - 1 };
+}
+
+function moveOrganizerBlockToBottom(rows, start, end) {
+    if (end >= rows.length - 1) return { changed: false, start, end };
+    const block = rows.splice(start, end - start + 1);
+    rows.push(...block);
+    return { changed: true, start: rows.length - block.length, end: rows.length - 1 };
+}
+
+function deleteOrganizerBlock(rows, start, end) {
+    if (start < 0 || end < start || end >= rows.length) return { changed: false, start, end };
+    rows.splice(start, end - start + 1);
+    const nextStart = Math.min(start, Math.max(0, rows.length - 1));
+    return { changed: true, start: nextStart, end: nextStart };
+}
+
+function organizerRangeOrWarn(state) {
+    const range = getSelectedContiguousRange(state);
+    if (!range) {
+        toastr.warning(state.selectedIds.size ? '请先选择连续楼层' : '请先选择楼层');
+        return null;
+    }
+    return range;
+}
+
+function organizerTempProbeName(fileName) {
+    return `${safeChatExportBaseName(fileName)}.cv-overwrite-test-${timestampForFileName()}.jsonl`;
+}
+
+async function verifyChatImportOverwriteSupport(character, fileName, originalArr) {
+    const tempName = organizerTempProbeName(fileName);
+    const probe = `chatvault_probe_${Date.now()}`;
+    const first = originalArr.map(cloneOrganizerObject);
+    const second = originalArr.map(cloneOrganizerObject);
+    first[0] = { ...(first[0] || {}), chatvault_overwrite_probe: `${probe}_first` };
+    second[0] = { ...(second[0] || {}), chatvault_overwrite_probe: `${probe}_second` };
+
+    try {
+        setStatus('正在验证导入覆盖行为…');
+        await postImportChatFile(character, jsonlFileFromArray(first, tempName));
+        await reloadCharacterChats(character);
+        await postImportChatFile(character, jsonlFileFromArray(second, tempName));
+        await reloadCharacterChats(character);
+
+        const target = withExt(tempName);
+        const exact = (chatsByAvatar[character.avatar] || []).filter(c => withExt(c?.file_name) === target);
+        const readBack = await fetchFullChat(character, tempName);
+        const ok = exact.length === 1 && readBack?.[0]?.chatvault_overwrite_probe === `${probe}_second`;
+        if (!ok) throw new Error('导入同名文件没有表现为稳定覆盖');
+        return true;
+    } finally {
+        try {
+            await deleteChat(character.avatar, tempName);
+            await reloadCharacterChats(character);
+        } catch { /* 临时验证文件清理失败时交给用户手动检查 */ }
+    }
+}
+
+function renderOrganizerBody(wrap, state, character, fileName) {
+    const body = wrap.querySelector('#cv_org_body');
+    const actions = wrap.querySelector('#cv_org_actions');
+    const range = getSelectedContiguousRange(state);
+    const selected = getSelectedIndexes(state);
+    const originalCount = Math.max(0, state.originalArr.length - 1);
+    const currentCount = state.rows.length;
+    const deletedCount = originalCount - currentCount;
+    const rowsHtml = state.rows.length ? state.rows.map((row, i) => {
+        const kind = getOrganizerMessageKind(row.msg);
+        const selectedClass = state.selectedIds.has(row.id) ? ' is-selected' : '';
+        const name = getOrganizerMessageName(row.msg, character, state.meta);
+        const preview = cleanOrganizerPreview(row.msg?.mes);
+        return `
+            <div class="cv-organizer-row${selectedClass}" data-i="${i}">
+                <label class="cv-organizer-check" title="选择这一楼">
+                    <input type="checkbox" ${state.selectedIds.has(row.id) ? 'checked' : ''} />
+                </label>
+                <div class="cv-organizer-index">
+                    <strong>#${i + 1}</strong>
+                    <span>原 #${row.originalIndex}</span>
+                </div>
+                <div class="cv-organizer-speaker">
+                    <span class="cv-organizer-kind is-${kind}">${escapeHtml(kind)}</span>
+                    <span>${escapeHtml(name)}</span>
+                </div>
+                <div class="cv-organizer-preview">${escapeHtml(preview)}</div>
+            </div>
+        `;
+    }).join('') : '<div class="cv-organizer-empty">没有可整理楼层</div>';
+
+    body.innerHTML = `
+        <div class="cv-organizer-head">
+            <div><strong>${escapeHtml(withExt(fileName))}</strong></div>
+            <div>原 ${originalCount} 楼 / 当前 ${currentCount} 楼${deletedCount > 0 ? ` / 已移除 ${deletedCount} 楼` : ''}</div>
+        </div>
+        <div class="cv-organizer-warning">整理只改弹窗内预览。下载或“备份后尝试写回”前，不会修改服务器聊天文件。</div>
+        <div class="cv-organizer-range">
+            <span>选择</span>
+            <input id="cv_org_start" type="number" min="1" max="${Math.max(1, currentCount)}" placeholder="起始" />
+            <span>到</span>
+            <input id="cv_org_end" type="number" min="1" max="${Math.max(1, currentCount)}" placeholder="结束" />
+            <button class="cv-btn" id="cv_org_apply" type="button">应用选择</button>
+            <button class="cv-btn" id="cv_org_clear" type="button">清空</button>
+        </div>
+        <div class="cv-organizer-toolbar">
+            <button class="cv-btn" id="cv_org_up" type="button" ${!range || range.start <= 0 ? 'disabled' : ''}>上移</button>
+            <button class="cv-btn" id="cv_org_down" type="button" ${!range || range.end >= currentCount - 1 ? 'disabled' : ''}>下移</button>
+            <button class="cv-btn" id="cv_org_top" type="button" ${!range || range.start <= 0 ? 'disabled' : ''}>置顶</button>
+            <button class="cv-btn" id="cv_org_bottom" type="button" ${!range || range.end >= currentCount - 1 ? 'disabled' : ''}>置底</button>
+            <button class="cv-btn cv-btn-danger" id="cv_org_delete" type="button" ${!range ? 'disabled' : ''}>删除选中</button>
+            <button class="cv-btn" id="cv_org_reset" type="button" ${!state.dirty ? 'disabled' : ''}>重置修改</button>
+        </div>
+        <div class="cv-field-hint cv-organizer-selection">${range ? `已选择当前 #${range.start + 1} - #${range.end + 1}，共 ${range.end - range.start + 1} 楼` : (selected.length ? '当前选择不是连续区间' : '可点击行或输入区间选择楼层')}</div>
+        <div class="cv-organizer-list">${rowsHtml}</div>
+    `;
+
+    actions.innerHTML = `
+        <button class="cv-btn" id="cv_org_close" type="button">关闭</button>
+        <button class="cv-btn" id="cv_org_download" type="button" ${!currentCount && !state.dirty ? 'disabled' : ''}>下载整理后 JSONL</button>
+        <button class="cv-btn cv-btn-primary" id="cv_org_write" type="button" ${!state.dirty ? 'disabled' : ''}>备份后尝试写回原文件</button>
+    `;
+
+    const rerender = () => renderOrganizerBody(wrap, state, character, fileName);
+    const applyMove = (fn) => {
+        const r = organizerRangeOrWarn(state);
+        if (!r) return;
+        const res = fn(state.rows, r.start, r.end);
+        if (!res.changed) return;
+        state.dirty = true;
+        state.downloaded = false;
+        selectOrganizerIndexes(state, res.start, res.end);
+        rerender();
+    };
+
+    body.querySelectorAll('.cv-organizer-row').forEach(rowEl => {
+        rowEl.onclick = (e) => {
+            if (e.target.closest('input')) return;
+            const i = Number(rowEl.dataset.i);
+            if (e.shiftKey && state.lastSelectedIndex != null) {
+                selectOrganizerIndexes(state, Math.min(state.lastSelectedIndex, i), Math.max(state.lastSelectedIndex, i));
+            } else {
+                const id = state.rows[i]?.id;
+                if (!id) return;
+                if (state.selectedIds.has(id)) state.selectedIds.delete(id);
+                else state.selectedIds.add(id);
+                state.lastSelectedIndex = i;
+            }
+            rerender();
+        };
+        const check = rowEl.querySelector('input');
+        if (check) check.onchange = () => rowEl.click();
+    });
+
+    body.querySelector('#cv_org_apply').onclick = () => {
+        const start = Number(body.querySelector('#cv_org_start').value);
+        const end = Number(body.querySelector('#cv_org_end').value || start);
+        if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < start || end > state.rows.length) {
+            toastr.warning('请输入有效楼层范围');
+            return;
+        }
+        selectOrganizerIndexes(state, start - 1, end - 1);
+        rerender();
+    };
+    body.querySelector('#cv_org_clear').onclick = () => { state.selectedIds.clear(); state.lastSelectedIndex = null; rerender(); };
+    body.querySelector('#cv_org_up').onclick = () => applyMove(moveOrganizerBlockUp);
+    body.querySelector('#cv_org_down').onclick = () => applyMove(moveOrganizerBlockDown);
+    body.querySelector('#cv_org_top').onclick = () => applyMove(moveOrganizerBlockToTop);
+    body.querySelector('#cv_org_bottom').onclick = () => applyMove(moveOrganizerBlockToBottom);
+    body.querySelector('#cv_org_delete').onclick = () => {
+        const r = organizerRangeOrWarn(state);
+        if (!r) return;
+        const count = r.end - r.start + 1;
+        if (!confirm(`先从整理预览中移除当前 #${r.start + 1} - #${r.end + 1}，共 ${count} 楼？\n\n这一步还不会写回服务器，可用“重置修改”恢复。`)) return;
+        const res = deleteOrganizerBlock(state.rows, r.start, r.end);
+        if (!res.changed) return;
+        state.dirty = true;
+        state.downloaded = false;
+        state.selectedIds.clear();
+        if (state.rows.length) selectOrganizerIndexes(state, res.start, res.end);
+        rerender();
+    };
+    body.querySelector('#cv_org_reset').onclick = () => {
+        if (!state.dirty) return;
+        if (!confirm('放弃当前整理修改，恢复到刚打开时的楼层顺序？')) return;
+        const fresh = buildOrganizerState(state.originalArr, character);
+        Object.assign(state, fresh);
+        rerender();
+    };
+
+    actions.querySelector('#cv_org_close').onclick = () => closeOrganizerModal(state);
+    actions.querySelector('#cv_org_download').onclick = () => {
+        downloadChatArrayJsonl(buildArrangedChatArray(state), fileName, `arranged-${timestampForFileName()}`);
+        state.downloaded = true;
+        setStatus('✓ 已下载整理后 JSONL');
+        toastr.success('已下载整理后 JSONL');
+        rerender();
+    };
+    actions.querySelector('#cv_org_write').onclick = async () => {
+        try { await saveArrangedChatByImportOverwrite(character, fileName, state); }
+        catch (e) {
+            console.error('[ChatVault] 整理写回失败', e);
+            setStatus(`❌ 整理写回失败: ${e.message}`);
+            toastr.error(`整理写回失败: ${e.message}`);
+        }
+    };
+}
+
+function closeOrganizerModal(state) {
+    if (state?.dirty && !confirm('整理结果尚未写回。确定关闭整理器？')) return;
+    closeModal();
+}
+
+async function saveArrangedChatByImportOverwrite(character, fileName, state) {
+    if (!state.dirty) { toastr.info('没有需要写回的整理修改'); return; }
+    const arranged = buildArrangedChatArray(state);
+    const originalCount = Math.max(0, state.originalArr.length - 1);
+    const newCount = Math.max(0, arranged.length - 1);
+    const deletedCount = originalCount - newCount;
+
+    downloadChatArrayJsonl(state.originalArr, fileName, `cvbak-${timestampForFileName()}`);
+    const emptyWarn = newCount === 0 ? '\n\n注意：整理后聊天将没有任何消息楼层。' : '';
+    if (!confirm(`即将尝试写回「${withExt(fileName)}」。\n\n原 ${originalCount} 楼，整理后 ${newCount} 楼${deletedCount > 0 ? `，移除 ${deletedCount} 楼` : ''}。\n已先下载原始备份 JSONL。\n\n写回前会用临时文件验证当前 SillyTavern 的导入同名文件是否为覆盖行为；验证失败则不会写回。${emptyWarn}\n\n确定继续？`)) return;
+
+    await verifyChatImportOverwriteSupport(character, fileName, state.originalArr);
+    setStatus('正在写回整理后的聊天…');
+    await postImportChatFile(character, jsonlFileFromArray(arranged, withExt(fileName)));
+    await reloadCharacterChats(character);
+
+    const readBack = await fetchFullChat(character, fileName);
+    if (chatArrayToJsonl(readBack) !== chatArrayToJsonl(arranged)) {
+        throw new Error('写回后读取结果与整理内容不一致，请检查聊天列表和刚下载的备份');
+    }
+
+    previewCache.delete(metaKey(character.avatar, fileName));
+    setStatus('✓ 已整理并写回');
+    toastr.success('整理完成，已写回聊天文件');
+    render();
+    closeModal();
+}
+
+function openChatOrganizerModal(character, fileName) {
+    closeModal();
+    const wrap = document.createElement('div');
+    wrap.className = 'cv-modal-backdrop';
+    wrap.id = 'cv_modal';
+    wrap.innerHTML = `
+        <div class="cv-modal cv-modal-wide cv-organizer-modal" onclick="event.stopPropagation()">
+            <button class="cv-modal-close" id="cv_org_x" type="button" title="关闭">${ICONS.close}</button>
+            <h3>整理聊天楼层</h3>
+            <div class="cv-modal-body" id="cv_org_body">
+                <div class="cv-organizer-empty">正在读取聊天楼层…</div>
+            </div>
+            <div class="cv-modal-actions" id="cv_org_actions">
+                <button class="cv-btn" id="cv_org_loading_close" type="button">关闭</button>
+            </div>
+        </div>
+    `;
+    wrap.onclick = closeModal;
+    document.getElementById('chatvault_panel').appendChild(wrap);
+    wrap.querySelector('#cv_org_x').onclick = closeModal;
+    wrap.querySelector('#cv_org_loading_close').onclick = closeModal;
+
+    fetchFullChat(character, fileName).then(arr => {
+        const state = buildOrganizerState(arr, character);
+        wrap.querySelector('#cv_org_x').onclick = () => closeOrganizerModal(state);
+        wrap.onclick = () => closeOrganizerModal(state);
+        renderOrganizerBody(wrap, state, character, fileName);
+    }).catch(e => {
+        wrap.querySelector('#cv_org_body').innerHTML = `<div class="cv-organizer-empty">读取失败：${escapeHtml(e.message)}</div>`;
+        setStatus(`❌ 读取聊天失败: ${e.message}`);
+        toastr.error(`读取聊天失败: ${e.message}`);
+    });
 }
 
 /* ============================================================
@@ -3432,6 +3836,14 @@ function openEditModal(character, fileName) {
                     <input type="text" id="cv_m_file" value="${escapeHtml(fileName)}" />
                     <div class="cv-field-hint">修改这里会真正在服务器上重命名文件</div>
                 </div>
+                <div class="cv-section-divider"></div>
+                <div class="cv-edit-tool-row">
+                    <div>
+                        <div class="cv-edit-tool-title">聊天楼层整理</div>
+                        <div class="cv-field-hint">移动或删除聊天楼层，写回前会先备份并确认。</div>
+                    </div>
+                    <button class="cv-btn" id="cv_m_organize" type="button">整理楼层</button>
+                </div>
             </div>
 
             <div class="cv-modal-actions">
@@ -3446,6 +3858,7 @@ function openEditModal(character, fileName) {
 
     document.getElementById('cv_m_close').onclick = closeModal;
     document.getElementById('cv_m_cancel').onclick = closeModal;
+    document.getElementById('cv_m_organize').onclick = () => openChatOrganizerModal(character, fileName);
     document.getElementById('cv_m_save').onclick = async () => {
         const newTitle = document.getElementById('cv_m_title').value.trim();
         const newTags = document.getElementById('cv_m_tags').value
