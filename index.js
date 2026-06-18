@@ -3504,7 +3504,7 @@ function buildOrganizerState(arr, character) {
     const meta = cloneOrganizerObject(originalArr[0] || {});
     const rows = originalArr.slice(1).map((msg, i) => ({
         id: `org_${i + 1}`,
-        originalIndex: i + 1,
+        originalIndex: i,
         msg: cloneOrganizerObject(msg),
     }));
     return {
@@ -3607,7 +3607,7 @@ function renderOrganizerPagerHtml(state, currentCount, pageStart, pageEnd) {
     if (currentCount <= state.pageSize) return '';
     return `
         <div class="cv-organizer-pager">
-            <div class="cv-organizer-pager-info">显示 #${pageStart + 1} - #${pageEnd} / 共 ${currentCount} 楼</div>
+            <div class="cv-organizer-pager-info">显示 #${pageStart} - #${Math.max(pageStart, pageEnd - 1)} / 共 ${currentCount} 楼</div>
             <div class="cv-organizer-pager-main">
                 <button class="cv-organizer-page-btn" id="cv_org_first" type="button" ${state.page <= 1 ? 'disabled' : ''}>« 首页</button>
                 <button class="cv-organizer-page-btn" id="cv_org_prev" type="button" ${state.page <= 1 ? 'disabled' : ''}>‹ 上一页</button>
@@ -3661,11 +3661,11 @@ function deleteOrganizerBlock(rows, start, end) {
 function moveOrganizerBlockToFloor(rows, start, end, targetFloor) {
     const len = end - start + 1;
     const total = rows.length;
-    const maxStartFloor = total - len + 1;
-    if (!Number.isInteger(targetFloor) || targetFloor < 1 || targetFloor > maxStartFloor) {
+    const maxStartFloor = total - len;
+    if (!Number.isInteger(targetFloor) || targetFloor < 0 || targetFloor > maxStartFloor) {
         return { changed: false, invalid: true, maxStartFloor, start, end };
     }
-    const targetIndex = targetFloor - 1;
+    const targetIndex = targetFloor;
     if (targetIndex === start) return { changed: false, start, end };
     const block = rows.splice(start, len);
     rows.splice(targetIndex, 0, ...block);
@@ -3709,14 +3709,14 @@ function renderOrganizerBody(wrap, state, character, fileName) {
                     <input type="checkbox" ${state.selectedIds.has(row.id) ? 'checked' : ''} />
                 </label>
                 <div class="cv-organizer-index">
-                    <strong>#${i + 1}</strong>
+                    <strong>#${i}</strong>
                     <span>原 #${row.originalIndex}</span>
                 </div>
                 <div class="cv-organizer-speaker">
                     <span class="cv-organizer-kind is-${kind}">${escapeHtml(kind)}</span>
                     <span>${escapeHtml(name)}</span>
                 </div>
-                <button class="cv-organizer-preview" type="button" aria-label="预览第 ${i + 1} 楼完整消息" title="点击查看完整消息">
+                <button class="cv-organizer-preview" type="button" aria-label="预览第 ${i} 层完整消息" title="点击查看完整消息">
                     <span class="cv-organizer-preview-text">${escapeHtml(preview)}</span>
                     <span class="cv-organizer-preview-action">预览消息</span>
                 </button>
@@ -3724,8 +3724,8 @@ function renderOrganizerBody(wrap, state, character, fileName) {
         `;
     }).join('') : '<div class="cv-organizer-empty">没有可整理楼层</div>';
     const selectionHint = range
-        ? `已选择全局 #${range.start + 1} - #${range.end + 1}，共 ${range.end - range.start + 1} 楼`
-        : (selected.length ? `当前选择不是连续区间，共 ${selected.length} 楼；移动/删除前请选择连续楼层` : '可点击行、Shift 连选，或输入全局楼层范围选择');
+        ? `已选择全局 #${range.start} - #${range.end}，共 ${range.end - range.start + 1} 楼`
+        : (selected.length ? `当前选择不是连续区间，共 ${selected.length} 楼；移动/删除前请选择连续楼层` : '可点击行、Shift 连选，或输入全局层数范围选择');
     const pagerHtml = renderOrganizerPagerHtml(state, currentCount, pageStart, pageEnd);
 
     body.innerHTML = `
@@ -3737,19 +3737,19 @@ function renderOrganizerBody(wrap, state, character, fileName) {
             <button class="cv-organizer-help-toggle${state.helpOpen ? ' is-open' : ''}" id="cv_org_help" type="button" aria-expanded="${state.helpOpen ? 'true' : 'false'}" title="整理说明">?</button>
             <span>整理说明</span>
         </div>
-        <div class="cv-organizer-warning" id="cv_org_help_body" ${state.helpOpen ? '' : 'hidden'}>整理结果只在弹窗内预览。写回前请先“备份原文件”，再点“保存更改”；保存时会二次确认并验证覆盖结果。当前页可拖拽，跨页请用“移动到第 N 楼”。</div>
+        <div class="cv-organizer-warning" id="cv_org_help_body" ${state.helpOpen ? '' : 'hidden'}>整理结果只在弹窗内预览。写回前请先“备份原文件”，再点“保存更改”；保存时会二次确认并验证覆盖结果。当前页可拖拽，跨页请用“移动到第 N 层”。</div>
         <div class="cv-organizer-range">
             <span>选择</span>
-            <input id="cv_org_start" type="number" min="1" max="${Math.max(1, currentCount)}" placeholder="起始" />
+            <input id="cv_org_start" type="number" min="0" max="${Math.max(0, currentCount - 1)}" placeholder="起始" />
             <span>到</span>
-            <input id="cv_org_end" type="number" min="1" max="${Math.max(1, currentCount)}" placeholder="结束" />
+            <input id="cv_org_end" type="number" min="0" max="${Math.max(0, currentCount - 1)}" placeholder="结束" />
             <button class="cv-btn" id="cv_org_apply" type="button">选择</button>
             <button class="cv-btn" id="cv_org_clear" type="button">取消</button>
         </div>
         <div class="cv-organizer-toolbar cv-organizer-movebar">
             <button class="cv-btn" id="cv_org_up" type="button" ${!range || range.start <= 0 ? 'disabled' : ''}>上移</button>
             <button class="cv-btn" id="cv_org_down" type="button" ${!range || range.end >= currentCount - 1 ? 'disabled' : ''}>下移</button>
-            <span class="cv-organizer-move-target">移动到第 <input id="cv_org_move_floor" type="number" min="1" max="${Math.max(1, currentCount)}" placeholder="楼层" /> 楼 <button class="cv-btn" id="cv_org_move_to" type="button" ${!range ? 'disabled' : ''}>移动</button></span>
+            <span class="cv-organizer-move-target">移动到第 <input id="cv_org_move_floor" type="number" min="0" max="${Math.max(0, currentCount - 1)}" placeholder="层数" /> 层 <button class="cv-btn" id="cv_org_move_to" type="button" ${!range ? 'disabled' : ''}>移动</button></span>
         </div>
         <div class="cv-organizer-toolbar cv-organizer-editbar">
             <button class="cv-btn cv-btn-danger" id="cv_org_delete" type="button" ${!range ? 'disabled' : ''}>删除选中</button>
@@ -3845,12 +3845,12 @@ function renderOrganizerBody(wrap, state, character, fileName) {
             if (!r) { rerender(); return; }
             if (targetIndex >= r.start && targetIndex <= r.end) { rerender(); return; }
             const len = r.end - r.start + 1;
-            let targetFloor = targetIndex + (side === 'after' ? 2 : 1);
+            let targetFloor = targetIndex + (side === 'after' ? 1 : 0);
             if (targetIndex > r.end) targetFloor -= len;
-            const maxStartFloor = state.rows.length - len + 1;
-            targetFloor = Math.min(Math.max(1, targetFloor), maxStartFloor);
+            const maxStartFloor = state.rows.length - len;
+            targetFloor = Math.min(Math.max(0, targetFloor), maxStartFloor);
             const res = moveOrganizerBlockToFloor(state.rows, r.start, r.end, targetFloor);
-            if (res.invalid) { toastr.warning(`目标楼层无效，最大可移动到第 ${res.maxStartFloor} 楼`); rerender(); return; }
+            if (res.invalid) { toastr.warning(`目标层数无效，最大可移动到第 ${res.maxStartFloor} 层`); rerender(); return; }
             if (!res.changed) { rerender(); return; }
             finishOrganizerMutation(state, res.start, res.end);
             rerender();
@@ -3866,12 +3866,12 @@ function renderOrganizerBody(wrap, state, character, fileName) {
     body.querySelector('#cv_org_apply').onclick = () => {
         const start = Number(body.querySelector('#cv_org_start').value);
         const end = Number(body.querySelector('#cv_org_end').value || start);
-        if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < start || end > state.rows.length) {
-            toastr.warning('请输入有效楼层范围');
+        if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end < start || end >= state.rows.length) {
+            toastr.warning('请输入有效层数范围');
             return;
         }
-        selectOrganizerIndexes(state, start - 1, end - 1);
-        setOrganizerPageForIndex(state, start - 1);
+        selectOrganizerIndexes(state, start, end);
+        setOrganizerPageForIndex(state, start);
         rerender();
     };
     body.querySelector('#cv_org_clear').onclick = () => { state.selectedIds.clear(); state.lastSelectedIndex = null; rerender(); };
@@ -3882,7 +3882,7 @@ function renderOrganizerBody(wrap, state, character, fileName) {
         if (!r) return;
         const targetFloor = Number(body.querySelector('#cv_org_move_floor').value);
         const res = moveOrganizerBlockToFloor(state.rows, r.start, r.end, targetFloor);
-        if (res.invalid) { toastr.warning(`请输入 1-${res.maxStartFloor} 之间的目标楼层`); return; }
+        if (res.invalid) { toastr.warning(`请输入 0-${res.maxStartFloor} 之间的目标层数`); return; }
         if (!res.changed) return;
         finishOrganizerMutation(state, res.start, res.end);
         rerender();
@@ -3891,7 +3891,7 @@ function renderOrganizerBody(wrap, state, character, fileName) {
         const r = organizerRangeOrWarn(state);
         if (!r) return;
         const count = r.end - r.start + 1;
-        if (!confirm(`先从整理预览中移除全局 #${r.start + 1} - #${r.end + 1}，共 ${count} 楼？\n\n这一步还不会写回服务器，可用“重置修改”恢复。`)) return;
+        if (!confirm(`先从整理预览中移除全局 #${r.start} - #${r.end}，共 ${count} 楼？\n\n这一步还不会写回服务器，可用“重置修改”恢复。`)) return;
         const res = deleteOrganizerBlock(state.rows, r.start, r.end);
         if (!res.changed) return;
         finishOrganizerMutation(state, res.start, res.end);
