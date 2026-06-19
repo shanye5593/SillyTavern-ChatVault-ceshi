@@ -240,6 +240,8 @@ function removeBookmark(avatar, fileName, idx) {
  * ============================================================ */
 
 let _getReqHeaders = null;
+let _showMoreMessages = null;
+let _getFirstDisplayedMessageId = null;
 const _headersReady = (async () => {
     try {
         const mod = await import('../../../../script.js');
@@ -247,6 +249,8 @@ const _headersReady = (async () => {
             _getReqHeaders = mod.getRequestHeaders;
             console.log('[ChatVault] getRequestHeaders 已通过 ESM import 加载');
         }
+        if (typeof mod.showMoreMessages === 'function') _showMoreMessages = mod.showMoreMessages;
+        if (typeof mod.getFirstDisplayedMessageId === 'function') _getFirstDisplayedMessageId = mod.getFirstDisplayedMessageId;
     } catch (e) {
         console.warn('[ChatVault] 动态 import script.js 失败，将使用 cookie fallback:', e.message);
     }
@@ -590,30 +594,42 @@ function findRealChatMessageEl(idx) {
         || Number(el.dataset?.messageId) === idx) || null;
 }
 
-async function runRealChatGoCommand(idx) {
+function getFirstRealDisplayedMessageId() {
     try {
-        const ctx = SillyTavern.getContext();
-        if (typeof ctx.executeSlashCommandsWithOptions !== 'function') return false;
-        await ctx.executeSlashCommandsWithOptions(`/go ${idx}`);
-        return true;
-    } catch { return false; }
+        if (typeof _getFirstDisplayedMessageId === 'function') {
+            const id = Number(_getFirstDisplayedMessageId());
+            if (Number.isFinite(id)) return id;
+        }
+    } catch {}
+    const ids = Array.from(document.querySelectorAll('#chat .mes'))
+        .map(el => Number(el.getAttribute('mesid')))
+        .filter(Number.isFinite);
+    return ids.length ? Math.min(...ids) : null;
 }
 
-async function scrollRealChatToFloor(idx) {
-    await waitFor(() => {
+async function ensureRealChatFloorRendered(idx) {
+    const chatReady = await waitFor(() => {
         try {
             const chat = SillyTavern.getContext()?.chat;
             return Array.isArray(chat) && chat.length > idx;
-        } catch { return !!document.getElementById('chat'); }
-    }, 8000, 80);
+        } catch { return false; }
+    }, 10000, 80);
+    if (!chatReady) return false;
 
-    await runRealChatGoCommand(idx);
-    let ok = await waitFor(() => !!findRealChatMessageEl(idx), 12000, 120);
-    if (!ok) {
-        // 有些 ST 版本会在 slash 跳转后再异步补 DOM；再给一次机会，避免误报楼层不存在。
-        await runRealChatGoCommand(idx);
-        ok = await waitFor(() => !!findRealChatMessageEl(idx), 6000, 120);
+    if (findRealChatMessageEl(idx)) return true;
+    let firstDisplayed = getFirstRealDisplayedMessageId();
+    if (firstDisplayed !== null && idx < firstDisplayed && typeof _showMoreMessages === 'function') {
+        await _showMoreMessages(firstDisplayed - idx);
+        await waitFor(() => {
+            firstDisplayed = getFirstRealDisplayedMessageId();
+            return firstDisplayed !== null && firstDisplayed <= idx;
+        }, 6000, 80);
     }
+    return !!findRealChatMessageEl(idx);
+}
+
+async function scrollRealChatToFloor(idx) {
+    const ok = await ensureRealChatFloorRendered(idx);
     const el = ok ? findRealChatMessageEl(idx) : null;
     if (!el) {
         toastr.warning(`已打开聊天，但暂时没定位到 #${idx} 楼，请稍后手动滚动`);
