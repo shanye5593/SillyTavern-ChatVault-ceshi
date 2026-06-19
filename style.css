@@ -2287,11 +2287,11 @@
     #chatvault_panel .cv-resize-handle.cv-rh-e {
         top: 0;
         bottom: 0;
-        width: 10px;
+        width: 8px;
         cursor: ew-resize;
     }
-    #chatvault_panel .cv-resize-handle.cv-rh-w { left: 0; }
-    #chatvault_panel .cv-resize-handle.cv-rh-e { right: 0; }
+    #chatvault_panel .cv-resize-handle.cv-rh-w { left: -4px; }
+    #chatvault_panel .cv-resize-handle.cv-rh-e { right: -4px; }
     #chatvault_panel .cv-resize-handle.cv-rh-se {
         bottom: 0; right: 0;
         width: 22px; height: 22px;

@@ -570,24 +570,53 @@ async function newChatFor(character) {
 }
 
 function findRealChatMessageEl(idx) {
+    const chat = document.getElementById('chat') || document;
     const selectors = [
-        `#chat .mes[mesid="${idx}"]`,
-        `#chat .mes[data-mesid="${idx}"]`,
         `.mes[mesid="${idx}"]`,
         `.mes[data-mesid="${idx}"]`,
+        `.mes[data-index="${idx}"]`,
+        `.mes[data-idx="${idx}"]`,
+        `.mes[data-message-id="${idx}"]`,
     ];
     for (const sel of selectors) {
-        const el = document.querySelector(sel);
+        const el = chat.querySelector(sel) || document.querySelector(sel);
         if (el) return el;
     }
-    return null;
+    const all = Array.from(chat.querySelectorAll('.mes'));
+    return all.find(el => Number(el.getAttribute('mesid')) === idx
+        || Number(el.dataset?.mesid) === idx
+        || Number(el.dataset?.index) === idx
+        || Number(el.dataset?.idx) === idx
+        || Number(el.dataset?.messageId) === idx) || null;
+}
+
+async function runRealChatGoCommand(idx) {
+    try {
+        const ctx = SillyTavern.getContext();
+        if (typeof ctx.executeSlashCommandsWithOptions !== 'function') return false;
+        await ctx.executeSlashCommandsWithOptions(`/go ${idx}`);
+        return true;
+    } catch { return false; }
 }
 
 async function scrollRealChatToFloor(idx) {
-    const ok = await waitFor(() => !!findRealChatMessageEl(idx), 8000, 80);
+    await waitFor(() => {
+        try {
+            const chat = SillyTavern.getContext()?.chat;
+            return Array.isArray(chat) && chat.length > idx;
+        } catch { return !!document.getElementById('chat'); }
+    }, 8000, 80);
+
+    await runRealChatGoCommand(idx);
+    let ok = await waitFor(() => !!findRealChatMessageEl(idx), 12000, 120);
+    if (!ok) {
+        // 有些 ST 版本会在 slash 跳转后再异步补 DOM；再给一次机会，避免误报楼层不存在。
+        await runRealChatGoCommand(idx);
+        ok = await waitFor(() => !!findRealChatMessageEl(idx), 6000, 120);
+    }
     const el = ok ? findRealChatMessageEl(idx) : null;
     if (!el) {
-        toastr.warning(`已打开聊天，但未找到 #${idx} 楼，请稍后手动滚动`);
+        toastr.warning(`已打开聊天，但暂时没定位到 #${idx} 楼，请稍后手动滚动`);
         return;
     }
     el.scrollIntoView({ block: 'center', behavior: 'smooth' });
