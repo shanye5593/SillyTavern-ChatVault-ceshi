@@ -4,7 +4,7 @@
  * https://github.com/shanye5593/SillyTavern-ChatVault
  */
 
-const VERSION = '0.5.27';
+const VERSION = '0.5.8-test';
 const STORAGE_KEY = 'st-chatvault-meta';
 const SETTINGS_KEY = 'st-chatvault-settings';
 const PAGE_SIZE = 50;
@@ -619,11 +619,16 @@ async function ensureRealChatFloorRendered(idx) {
     if (findRealChatMessageEl(idx)) return true;
     let firstDisplayed = getFirstRealDisplayedMessageId();
     if (firstDisplayed !== null && idx < firstDisplayed && typeof _showMoreMessages === 'function') {
-        await _showMoreMessages(firstDisplayed - idx);
-        await waitFor(() => {
-            firstDisplayed = getFirstRealDisplayedMessageId();
-            return firstDisplayed !== null && firstDisplayed <= idx;
-        }, 6000, 80);
+        try {
+            await _showMoreMessages(firstDisplayed - idx);
+            await waitFor(() => {
+                firstDisplayed = getFirstRealDisplayedMessageId();
+                return firstDisplayed !== null && firstDisplayed <= idx;
+            }, 6000, 80);
+        } catch (e) {
+            console.warn('[ChatVault] 加载更早消息失败，降级为不定位楼层', e);
+            return false;
+        }
     }
     return !!findRealChatMessageEl(idx);
 }
@@ -3509,6 +3514,7 @@ async function postImportChatFile(character, file) {
 }
 
 async function postSaveChatArray(character, fileName, arr) {
+    await _headersReady.catch(() => {});
     const res = await fetch('/api/chats/save', {
         method: 'POST',
         headers: headers(),
@@ -4128,8 +4134,24 @@ async function saveArrangedChatToOriginal(character, fileName, state) {
     await postSaveChatArray(character, fileName, arranged);
     await reloadCharacterChats(character);
 
-    const readBack = await fetchFullChat(character, fileName);
-    if (chatArrayToJsonl(readBack) !== chatArrayToJsonl(arranged)) {
+    const expectedJsonl = chatArrayToJsonl(arranged);
+    let lastReadError = null;
+    let verified = false;
+    for (let attempt = 0; attempt < 3; attempt++) {
+        if (attempt > 0) await new Promise(r => setTimeout(r, attempt === 1 ? 250 : 600));
+        try {
+            const readBack = await fetchFullChat(character, fileName);
+            if (chatArrayToJsonl(readBack) === expectedJsonl) {
+                verified = true;
+                break;
+            }
+            lastReadError = null;
+        } catch (e) {
+            lastReadError = e;
+        }
+    }
+    if (!verified) {
+        if (lastReadError) throw new Error(`写回后读取校验失败: ${lastReadError.message}`);
         throw new Error('写回后读取结果与整理内容不一致，请检查聊天列表和刚下载的备份');
     }
 
@@ -4251,6 +4273,16 @@ function openEditModal(character, fileName) {
             }
             if (!FILENAME_RE.test(stripExt(newFile))) {
                 toastr.error('文件名包含不允许的字符（仅允许字母数字中文及常见标点）');
+                return;
+            }
+            const newBase = stripExt(newFile).toLowerCase();
+            const oldBase = stripExt(fileName).toLowerCase();
+            const exists = (chatsByAvatar[character.avatar] || []).some(c => {
+                const base = stripExt(c.file_name || '').toLowerCase();
+                return base === newBase && base !== oldBase;
+            });
+            if (exists) {
+                toastr.error('同一角色下已存在同名聊天文件');
                 return;
             }
             try {
@@ -4425,7 +4457,9 @@ async function handleDelete(character, fileName) {
                     else delete c.chat;
                 }
             });
-        } catch {}
+        } catch (e) {
+            console.warn('[ChatVault] 删除后同步 ST 当前聊天字段失败，已忽略', e);
+        }
         setStatus('✓ 已删除');
         render();
     } catch (e) {
