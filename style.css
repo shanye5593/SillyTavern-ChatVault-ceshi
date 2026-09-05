@@ -3136,8 +3136,8 @@
 @container cv-record (max-width: 440px) {
     .cv-record-face { min-height: 196px; grid-template-columns: 32% minmax(0, 1fr); }
     .cv-record-front .cv-record-info { padding: 18px; gap: 8px; }
-    .cv-record-back { grid-template-columns: minmax(0, 1fr); }
-    .cv-record-back .cv-record-info { padding: 13px 18px; }
+    .cv-record-back { grid-template-columns: 112px minmax(0, 1fr); }
+    .cv-record-back .cv-record-info { padding: 13px 14px; }
     .cv-record-meta { font-size: 11px; gap: 6px; }
     .cv-record-count::before { margin-right: 6px; }
     .cv-record-title { font-size: 19px; }
@@ -3145,7 +3145,11 @@
     .cv-record-primary { gap: 3px 12px; }
     .cv-record-primary .cv-record-btn { padding: 7px 11px; font-size: 11px; gap: 6px; }
     .cv-record-primary .cv-record-plain { padding-inline: 0; }
-    .cv-record-sleeve { display: none; }
+    .cv-record-sleeve { display: flex; width: 112px; min-width: 112px; padding: 8px; }
+    .cv-sleeve-frame { padding: 8px 6px; }
+    .cv-sleeve-frame .cv-kicker { font-size: 5px; line-height: 1.2; letter-spacing: .4px; overflow-wrap: anywhere; }
+    .cv-sleeve-letter { min-height: 0; padding: 3px 0; font-size: 34px; line-height: 1; }
+    .cv-sleeve-caption { padding-top: 4px; font-size: 6px; line-height: 1.2; }
     .cv-record-story { white-space: normal; overflow-wrap: anywhere; font-size: 15px; }
     .cv-record-back-top { align-items: center; gap: 8px; }
     .cv-record-flip { width: 34px; height: 34px; }
@@ -3188,8 +3192,8 @@
 @supports not (container-type: inline-size) {
     #chatvault_panel.cv-layout-narrow .cv-record-face { min-height: 196px; grid-template-columns: 32% minmax(0, 1fr); }
     #chatvault_panel.cv-layout-narrow .cv-record-front .cv-record-info { padding: 18px; gap: 8px; }
-    #chatvault_panel.cv-layout-narrow .cv-record-back { grid-template-columns: minmax(0, 1fr); }
-    #chatvault_panel.cv-layout-narrow .cv-record-back .cv-record-info { padding: 13px 18px; }
+    #chatvault_panel.cv-layout-narrow .cv-record-back { grid-template-columns: 112px minmax(0, 1fr); }
+    #chatvault_panel.cv-layout-narrow .cv-record-back .cv-record-info { padding: 13px 14px; }
     #chatvault_panel.cv-layout-narrow .cv-record-meta { font-size: 11px; gap: 6px; }
     #chatvault_panel.cv-layout-narrow .cv-record-count::before { margin-right: 6px; }
     #chatvault_panel.cv-layout-narrow .cv-record-title { font-size: 19px; }
@@ -3197,7 +3201,11 @@
     #chatvault_panel.cv-layout-narrow .cv-record-primary { gap: 3px 12px; }
     #chatvault_panel.cv-layout-narrow .cv-record-primary .cv-record-btn { padding: 7px 11px; font-size: 11px; gap: 6px; }
     #chatvault_panel.cv-layout-narrow .cv-record-primary .cv-record-plain { padding-inline: 0; }
-    #chatvault_panel.cv-layout-narrow .cv-record-sleeve { display: none; }
+    #chatvault_panel.cv-layout-narrow .cv-record-sleeve { display: flex; width: 112px; min-width: 112px; padding: 8px; }
+    #chatvault_panel.cv-layout-narrow .cv-sleeve-frame { padding: 8px 6px; }
+    #chatvault_panel.cv-layout-narrow .cv-sleeve-frame .cv-kicker { font-size: 5px; line-height: 1.2; letter-spacing: .4px; overflow-wrap: anywhere; }
+    #chatvault_panel.cv-layout-narrow .cv-sleeve-letter { min-height: 0; padding: 3px 0; font-size: 34px; line-height: 1; }
+    #chatvault_panel.cv-layout-narrow .cv-sleeve-caption { padding-top: 4px; font-size: 6px; line-height: 1.2; }
     #chatvault_panel.cv-layout-narrow .cv-record-story { white-space: normal; overflow-wrap: anywhere; font-size: 15px; }
     #chatvault_panel.cv-layout-narrow .cv-record-back-top { align-items: center; gap: 8px; }
     #chatvault_panel.cv-layout-narrow .cv-record-flip { width: 34px; height: 34px; }
