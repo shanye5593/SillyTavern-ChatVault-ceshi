@@ -3134,16 +3134,29 @@
 #chatvault_settings input { accent-color: var(--cv-accent); }
 
 @container cv-record (max-width: 440px) {
-    .cv-record-face { min-height: 196px; }
-    .cv-record-front .cv-record-info { padding: 16px; gap: 8px; }
+    .cv-record-face { min-height: 196px; grid-template-columns: min(30%, 104px) minmax(0, 1fr); align-content: center; gap: 12px; padding: 14px; }
+    .cv-record-front .cv-record-info, .cv-record-back .cv-record-info { display: contents; }
+    .cv-record-cover, .cv-record-sleeve { grid-area: 1 / 1; align-self: center; width: 100%; aspect-ratio: 1 / 1; border-radius: 8px; }
+    .cv-record-heading, .cv-record-back-top { grid-area: 1 / 2; align-self: center; min-width: 0; }
+    .cv-record-meta { font-size: 11px; gap: 6px; }
+    .cv-record-count::before { margin-right: 6px; }
     .cv-record-title { font-size: 18px; }
-    #chatvault_panel .cv-record .cv-preview { min-height: 3.4em; max-height: 3.4em; font-size: 12px; line-height: 1.7; }
-    .cv-record-primary { gap: 4px 12px; }
-    .cv-record-primary .cv-record-btn { padding: 7px 10px; font-size: 11px; gap: 6px; }
+    #chatvault_panel .cv-record .cv-preview { grid-column: 1 / -1; min-height: 3.4em; max-height: 3.4em; font-size: 12px; line-height: 1.7; }
+    .cv-record-primary, .cv-record-tools, .cv-record-secondary { grid-column: 1 / -1; }
+    .cv-record-primary { gap: 8px 18px; }
+    .cv-record-primary .cv-record-btn { padding: 7px 14px; font-size: 12px; }
     .cv-record-primary .cv-record-plain { padding-inline: 0; }
-    .cv-record-back { grid-template-columns: minmax(0, 1fr); }
-    .cv-record-back .cv-record-info { padding: 12px 16px; }
-    .cv-record-sleeve { display: none; }
+    .cv-record-sleeve { display: flex; min-height: 0; padding: 5px; }
+    .cv-sleeve-frame { min-height: 0; padding: 4px; }
+    .cv-sleeve-frame .cv-kicker { font-size: 5px; line-height: 1.15; letter-spacing: .15px; }
+    .cv-sleeve-letter { min-height: 0; padding: 2px 0; font-size: 24px; font-size: clamp(20px, 8cqi, 34px); line-height: 1; }
+    .cv-sleeve-caption { padding-top: 2px; font-size: 6px; line-height: 1.2; }
+    .cv-record-story { white-space: normal; overflow-wrap: anywhere; }
+    .cv-record-back-top { align-items: flex-start; gap: 8px; }
+    .cv-record-flip { width: 32px; height: 32px; }
+    .cv-record-tools { margin: 0; }
+    .cv-record-tool { min-height: 44px; }
+    .cv-record-secondary { margin-top: 0; }
 }
 @media (min-width: 721px) {
     #chatvault_panel.cv-layout-narrow .cv-header { padding: 20px; gap: 14px; }
@@ -3177,13 +3190,30 @@
     .cv-theme-choice { font-size: 11px; gap: 7px; padding: 10px; }
 }
 @supports not (container-type: inline-size) {
-    .cv-record-front .cv-record-info { padding: 14px; gap: 8px; }
+    /* Use the same compact arrangement when card container queries are unavailable. */
+    .cv-record-face { min-height: 196px; grid-template-columns: min(30%, 104px) minmax(0, 1fr); align-content: center; gap: 12px; padding: 14px; }
+    .cv-record-front .cv-record-info, .cv-record-back .cv-record-info { display: contents; }
+    .cv-record-cover, .cv-record-sleeve { grid-area: 1 / 1; align-self: center; width: 100%; aspect-ratio: 1 / 1; border-radius: 8px; }
+    .cv-record-heading, .cv-record-back-top { grid-area: 1 / 2; align-self: center; min-width: 0; }
+    .cv-record-meta { font-size: 11px; gap: 6px; }
+    .cv-record-count::before { margin-right: 6px; }
     .cv-record-title { font-size: 18px; }
-    .cv-record-primary { gap: 4px 10px; }
-    .cv-record-primary .cv-record-btn { padding-inline: 10px; font-size: 11px; }
+    #chatvault_panel .cv-record .cv-preview { grid-column: 1 / -1; min-height: 3.4em; max-height: 3.4em; font-size: 12px; line-height: 1.7; }
+    .cv-record-primary, .cv-record-tools, .cv-record-secondary { grid-column: 1 / -1; }
+    .cv-record-primary { gap: 8px 18px; }
+    .cv-record-primary .cv-record-btn { padding: 7px 14px; font-size: 12px; }
     .cv-record-primary .cv-record-plain { padding-inline: 0; }
-    .cv-record-back { grid-template-columns: minmax(0, 1fr); }
-    .cv-record-sleeve { display: none; }
+    .cv-record-sleeve { display: flex; min-height: 0; padding: 5px; }
+    .cv-sleeve-frame { min-height: 0; padding: 4px; }
+    .cv-sleeve-frame .cv-kicker { font-size: 5px; line-height: 1.15; letter-spacing: .15px; }
+    .cv-sleeve-letter { min-height: 0; padding: 2px 0; font-size: 24px; font-size: clamp(20px, 8cqi, 34px); line-height: 1; }
+    .cv-sleeve-caption { padding-top: 2px; font-size: 6px; line-height: 1.2; }
+    .cv-record-story { white-space: normal; overflow-wrap: anywhere; }
+    .cv-record-back-top { align-items: flex-start; gap: 8px; }
+    .cv-record-flip { width: 32px; height: 32px; }
+    .cv-record-tools { margin: 0; }
+    .cv-record-tool { min-height: 44px; }
+    .cv-record-secondary { margin-top: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
     #chatvault_panel .cv-reader-stage { scroll-behavior: auto; }
