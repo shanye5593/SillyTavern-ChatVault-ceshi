@@ -1251,10 +1251,8 @@ function render() {
         else empty = '没有任何聊天记录';
         body.innerHTML = currentHeader + `<div class="cv-empty">${escapeHtml(empty)}</div>`;
     } else {
-        // 当前角色 tab：卡片省略角色名（同一角色重复无意义）
-        const hideCharName = activeTab === 'current';
         // PC 端所有 tab 都用双列网格（移动端 CSS 媒体查询会自动回退单列）
-        body.innerHTML = currentHeader + `<div class="cv-list cv-list-grid">${slice.map(({ character, chat }) => renderCard(character, chat, hideCharName)).join('')}</div>`;
+        body.innerHTML = currentHeader + `<div class="cv-list cv-list-grid">${slice.map(({ character, chat }) => renderCard(character, chat)).join('')}</div>`;
         bindCardEvents();
         observePreviews();
     }
@@ -1319,7 +1317,7 @@ function renderCharactersTab(body, groups) {
                     </button>
                 </div>
                 <div class="cv-list cv-list-grid cv-group-list">
-                    ${chats.map(ch => renderCard(c, ch, /*hideCharName*/ true)).join('')}
+                    ${chats.map(ch => renderCard(c, ch)).join('')}
                 </div>
             </div>
         `;
@@ -1354,36 +1352,20 @@ function renderCharactersTab(body, groups) {
     observePreviews();
 }
 
-function renderCard(character, chat, hideCharName = false) {
+function renderCard(character, chat) {
     const meta = getMetaFor(character.avatar, chat.file_name);
     const customTitle = meta.customTitle || '';
     const displayTitle = customTitle || chat.file_name || '(未命名)';
-    const tags = Array.isArray(meta.tags) ? meta.tags : [];
     const starred = !!meta.starred;
     const avatarUrl = character.avatar
         ? `/thumbnail?type=avatar&file=${encodeURIComponent(character.avatar)}`
         : '';
     const msgCount = typeof chat.mes === 'number' ? chat.mes
                    : (typeof chat.chat_items === 'number' ? chat.chat_items : null);
-    const sizeStr = chat.file_size ? fmtSize(chat.file_size) : '';
-    const timeStr = fmtRelTime(chat.last_mes);
-
-    const meta1 = [
-        msgCount !== null ? `<span class="cv-meta">${ICONS.msg} ${msgCount} 条</span>` : '',
-        sizeStr ? `<span class="cv-meta">${ICONS.file} ${escapeHtml(sizeStr)}</span>` : '',
-        timeStr ? `<span class="cv-meta">${ICONS.clock} ${escapeHtml(timeStr)}</span>` : '',
-    ].filter(Boolean).join('');
-
-    const tagsHtml = tags.length
-        ? `<div class="cv-tags">${tags.map(t => `<span class="cv-tag">${highlight(t, searchQuery)}</span>`).join('')}</div>`
-        : '';
-
     const active = isActiveChat(character, chat.file_name);
-    const activeBadge = active ? `<span class="cv-record-status">使用中</span>` : '<span class="cv-record-status">聊天档案</span>';
-    const jumpLabel = active ? '已打开' : '继续';
     const name = character.name || '未命名角色';
     const flipIcon = ICONS.refresh;
-    const starButton = (round = false) => `<button class="cv-record-btn cv-star${round ? ' cv-record-star' : ''}${starred ? ' is-on' : ''}" data-act="star" type="button" aria-label="收藏聊天" aria-pressed="${starred}" title="收藏聊天">${ICONS.star}${round ? '' : '<span>收藏</span>'}</button>`;
+    const starButton = `<button class="cv-record-btn cv-star${starred ? ' is-on' : ''}" data-act="star" type="button" aria-label="收藏聊天" aria-pressed="${starred}" title="收藏聊天">${ICONS.star}<span>收藏</span></button>`;
 
     return `
         <article class="cv-card cv-record ${active ? 'is-active' : ''}" data-avatar="${escapeHtml(character.avatar)}" data-name="${escapeHtml(character.name || '')}" data-file="${escapeHtml(chat.file_name)}" aria-label="${escapeHtml(name + ' · ' + displayTitle)}">
@@ -1391,49 +1373,38 @@ function renderCard(character, chat, hideCharName = false) {
           <div class="cv-record-lift">
             <div class="cv-record-turn" tabindex="-1">
               <div class="cv-record-face cv-record-front" aria-hidden="false">
-                <div class="cv-record-cover" data-card-cover="1">
-                  <div class="cv-cover-frame">
+                <button class="cv-record-cover" data-act="flip" type="button" aria-label="翻到背面，管理聊天">
+                  <span class="cv-cover-frame">
                     <span class="cv-cover-initial" aria-hidden="true">${escapeHtml(name.slice(0, 1))}</span>
                     ${avatarUrl ? `<img src="${avatarUrl}" loading="lazy" decoding="async" draggable="false" alt="${escapeHtml(name)}的角色封面" onerror="this.hidden=true"/>` : ''}
-                  </div>
-                  <span class="cv-cover-caption">CHATVAULT / STORIES</span>
-                </div>
+                  </span>
+                </button>
                 <div class="cv-record-info">
-                  <div class="cv-record-top">
-                    <div class="cv-record-heading"><span class="cv-kicker">${hideCharName ? 'STORY' : 'CHARACTER'}</span><span class="cv-record-character">${highlight(name, searchQuery)}</span></div>
-                    ${starButton(true)}
-                  </div>
-                  <span class="cv-record-rule" aria-hidden="true"></span>
                   <h3 class="cv-record-title" title="${escapeHtml(displayTitle)}">${highlight(displayTitle, searchQuery)}</h3>
-                  ${tagsHtml}
                   <div class="cv-preview is-loading" data-preview="1" aria-label="右键或长按查看完整预览">加载预览中…</div>
-                  <div class="cv-record-metadata">${meta1}</div>
                   <div class="cv-record-primary">
                     <button class="cv-record-btn" data-act="reader" type="button">${ICONS.book}<span>阅读故事</span></button>
-                    <button class="cv-record-btn cv-record-plain" data-act="open" type="button" title="跳转到此聊天"><span>${jumpLabel}</span>${ICONS.jump}</button>
+                    <button class="cv-record-btn cv-record-plain" data-act="open" type="button" title="跳转到此聊天"><span>跳转</span>${ICONS.jump}</button>
                   </div>
-                  <div class="cv-record-footer">${activeBadge}<button class="cv-record-flip" data-act="flip" type="button" aria-label="翻到背面，管理聊天">翻到背面${flipIcon}</button></div>
                 </div>
                 <span class="cv-record-light" aria-hidden="true"></span>
               </div>
               <div class="cv-record-face cv-record-back" aria-hidden="true" inert>
-                <div class="cv-record-sleeve" data-card-cover="1" aria-hidden="true">
-                  <div class="cv-sleeve-frame"><span class="cv-kicker">CHATVAULT RECORDS</span><strong>${escapeHtml(name)}</strong><span class="cv-sleeve-letter">B<span>↗</span></span><span class="cv-sleeve-caption">${msgCount === null ? 'CHAT ARCHIVE' : `${msgCount} 条消息`} / SIDE B</span></div>
+                <div class="cv-record-sleeve" aria-hidden="true">
+                  <div class="cv-sleeve-frame"><span class="cv-kicker">CHATVAULT RECORDS</span><span class="cv-sleeve-letter">B<span>↗</span></span><span class="cv-sleeve-caption" title="${escapeHtml(name)}">${escapeHtml(name)}${msgCount === null ? '' : ` · ${msgCount} 条`}</span></div>
                 </div>
                 <div class="cv-record-info">
-                  <span class="cv-kicker">THE DETAILS</span>
-                  <h3 class="cv-record-back-title">整理这段故事</h3>
-                  <span class="cv-record-rule" aria-hidden="true"></span>
-                  <p class="cv-record-story">${highlight(displayTitle, searchQuery)}</p>
-                  <p class="cv-record-filename" title="${escapeHtml(chat.file_name)}">${highlight(chat.file_name, searchQuery)}</p>
-                  <div class="cv-record-tools">
-                    <button class="cv-record-tool" data-act="edit" type="button">${ICONS.edit}<span>编辑资料<small>标题、标签与文件名</small></span></button>
-                    <button class="cv-record-tool" data-act="organize" type="button">${ICONS.msg}<span>整理楼层<small>顺序与消息管理</small></span></button>
-                    <button class="cv-record-tool" data-act="rules" type="button">${ICONS.gear}<span>摘取规则<small>留下想读的正文</small></span></button>
-                    <button class="cv-record-tool" data-act="export" type="button">${ICONS.download}<span>导出记录<small>TXT / JSONL</small></span></button>
+                  <div class="cv-record-back-top">
+                    <h3 class="cv-record-story" title="${escapeHtml(displayTitle)}">${highlight(displayTitle, searchQuery)}</h3>
+                    <button class="cv-record-flip" data-act="flip" type="button" aria-label="回到正面">${flipIcon}</button>
                   </div>
-                  <div class="cv-record-secondary">${starButton()}<button class="cv-record-btn cv-record-danger" data-act="delete" type="button">${ICONS.trash}<span>删除聊天</span></button></div>
-                  <div class="cv-record-footer"><span>${escapeHtml(sizeStr || '聊天档案')}</span><button class="cv-record-flip" data-act="flip" type="button" aria-label="翻回正面，查看故事">回到正面${flipIcon}</button></div>
+                  <div class="cv-record-tools">
+                    <button class="cv-record-tool" data-act="edit" type="button">${ICONS.edit}<span>编辑资料</span></button>
+                    <button class="cv-record-tool" data-act="organize" type="button">${ICONS.msg}<span>整理楼层</span></button>
+                    <button class="cv-record-tool" data-act="rules" type="button">${ICONS.gear}<span>摘取规则</span></button>
+                    <button class="cv-record-tool" data-act="export" type="button">${ICONS.download}<span>导出记录</span></button>
+                  </div>
+                  <div class="cv-record-secondary">${starButton}<button class="cv-record-btn cv-record-danger" data-act="delete" type="button">${ICONS.trash}<span>删除聊天</span></button></div>
                 </div>
                 <span class="cv-record-light" aria-hidden="true"></span>
               </div>

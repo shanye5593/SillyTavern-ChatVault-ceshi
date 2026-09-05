@@ -2986,10 +2986,10 @@
 #chatvault_panel .cv-group-count { font-size: 11px; }
 #chatvault_panel .cv-group-newchat { border-radius: 999px; min-height: 34px; font-size: 11px; font-weight: 700; }
 #chatvault_panel .cv-current-header { padding: 14px 0 20px; margin-bottom: 20px; }
-#chatvault_panel .cv-list-grid { gap: 20px; }
-#chatvault_panel.cv-layout-wide .cv-list-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
-#chatvault_panel.cv-layout-narrow .cv-list-grid { gap: 20px; }
-#chatvault_panel .cv-group.is-open .cv-group-list { padding: 16px; gap: 20px; border-top: 1px solid var(--cv-border); }
+#chatvault_panel .cv-list-grid { gap: 16px; }
+#chatvault_panel.cv-layout-wide .cv-list-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+#chatvault_panel.cv-layout-narrow .cv-list-grid { gap: 16px; }
+#chatvault_panel .cv-group.is-open .cv-group-list { padding: 16px; gap: 16px; border-top: 1px solid var(--cv-border); }
 
 /* A card is a perspective stage; the two faces share their natural grid height. */
 #chatvault_panel .cv-card.cv-record {
@@ -3004,8 +3004,8 @@
 .cv-record-turn.is-back { transform: rotateY(180deg); }
 .cv-record-turn:focus { outline: none; }
 .cv-record-face {
-    position: relative; grid-area: 1 / 1; min-width: 0; min-height: 348px;
-    display: grid; grid-template-columns: minmax(0, .84fr) minmax(0, 1.16fr);
+    position: relative; grid-area: 1 / 1; min-width: 0; min-height: 222px;
+    display: grid; grid-template-columns: min(32%, 220px) minmax(0, 1fr);
     border: 1px solid var(--cv-border); border-radius: 14px; overflow: hidden;
     background: var(--cv-bg-card); backface-visibility: hidden; -webkit-backface-visibility: hidden;
 }
@@ -3020,30 +3020,23 @@
 .cv-record.is-turning .cv-record-turn { pointer-events: none; }
 .cv-record.is-turning :is(.cv-record-turn, .cv-record-lift) { will-change: transform; }
 .cv-record.is-turning .cv-record-light { will-change: opacity; }
-.cv-record-cover, .cv-record-sleeve { min-width: 0; background: var(--cv-cover); color: var(--cv-cover-ink); padding: 18px; cursor: pointer; }
-.cv-record-cover { display: flex; flex-direction: column; justify-content: center; gap: 12px; }
-.cv-cover-frame { position: relative; display: grid; place-items: center; aspect-ratio: 3 / 4; border: 1px solid #171514aa; background: #ded9c3; overflow: hidden; }
-.cv-cover-initial { font-size: clamp(36px, 10cqi, 80px); font-weight: 900; line-height: 1.1; opacity: .7; }
-.cv-cover-frame img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center top; filter: saturate(.8); }
+.cv-record-cover, .cv-record-sleeve { min-width: 0; background: var(--cv-cover); color: var(--cv-cover-ink); cursor: pointer; }
+.cv-record-cover { display: grid; place-items: center; width: 100%; padding: 0; border: 0; border-radius: 12px 4px 4px 12px; }
+#chatvault_panel .cv-record-cover:focus-visible { outline: 2px solid var(--cv-cover-ink); outline-offset: -6px; }
+/* Square viewport crops portrait/landscape character thumbnails around their centre. */
+.cv-cover-frame { position: relative; display: grid; place-items: center; width: 100%; aspect-ratio: 1 / 1; background: #ded9c3; overflow: hidden; }
+.cv-cover-initial { font-size: 48px; font-size: clamp(36px, 10cqi, 80px); font-weight: 900; line-height: 1.1; opacity: .7; }
+.cv-cover-frame img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center center; filter: saturate(.8); }
 .cv-cover-frame img[hidden] { display: none; }
-.cv-cover-caption { font-size: 7px; font-weight: 800; letter-spacing: 2px; text-align: center; color: #514a3b; }
-.cv-record-info { min-width: 0; display: flex; flex-direction: column; padding: 20px 18px 10px; }
-.cv-record-top { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
-.cv-record-heading { min-width: 0; }
-.cv-record-character { display: block; font-size: 23px; font-weight: 900; line-height: 1.3; letter-spacing: -.05em; margin-top: 4px; overflow-wrap: anywhere; }
-.cv-record-rule { flex: 0 0 1px; width: 32px; margin: 12px 0; background: var(--cv-border); }
-.cv-record-title { margin: 0; font-size: 15px; font-weight: 800; line-height: 1.55; letter-spacing: -.025em; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
-#chatvault_panel .cv-record .cv-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
-#chatvault_panel .cv-record .cv-tag { background: transparent; color: var(--cv-text-secondary); border: 1px solid var(--cv-border); border-radius: 3px; padding: 2px 5px; font-size: 9px; max-width: 100%; overflow-wrap: anywhere; }
-#chatvault_panel .cv-record .cv-preview { margin: 12px 0 16px; padding: 0; min-height: 3.6em; color: var(--cv-text-secondary); font-size: 12px; line-height: 1.8; white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; border: 0; background: transparent; }
-.cv-record-metadata { display: flex; flex-wrap: wrap; gap: 5px 10px; margin-top: auto; color: var(--cv-text-tertiary); }
-.cv-record-metadata .cv-meta { font-size: 9px; }
-.cv-record-metadata .cv-meta svg { width: 11px; height: 11px; }
-.cv-record-primary, .cv-record-secondary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin: 15px 0 12px; }
-.cv-record-btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 36px; padding: 7px 12px; border: 1px solid var(--cv-border); border-radius: 999px; color: var(--cv-text-primary); background: transparent; font-size: 11px; font-weight: 750; line-height: 1.4; white-space: nowrap; cursor: pointer; }
-.cv-record :is(button svg, .cv-record-footer svg) { width: 14px; height: 14px; flex-shrink: 0; }
+.cv-record-info { min-width: 0; display: flex; flex-direction: column; padding: 16px 20px; }
+.cv-record-front .cv-record-info { justify-content: center; gap: 12px; padding: 24px; }
+.cv-record-title { margin: 0; color: var(--cv-text-primary); font-size: 20px; font-weight: 800; line-height: 1.5; letter-spacing: -.025em; overflow-wrap: anywhere; }
+#chatvault_panel .cv-record .cv-preview { margin: 0; padding: 0; min-height: 3.5em; max-height: 3.5em; flex-shrink: 0; color: var(--cv-text-secondary); font-size: 13px; line-height: 1.75; white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; border: 0; background: transparent; }
+.cv-record-primary, .cv-record-secondary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; margin: 0; }
+.cv-record-primary { justify-content: flex-start; }
+.cv-record-btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 40px; padding: 7px 14px; border: 1px solid var(--cv-border); border-radius: 999px; color: var(--cv-text-primary); background: transparent; font-size: 12px; font-weight: 750; line-height: 1.4; white-space: nowrap; cursor: pointer; }
+.cv-record button svg { width: 14px; height: 14px; flex-shrink: 0; }
 .cv-record-btn:hover { background: var(--cv-accent); border-color: var(--cv-accent); color: var(--cv-on-accent); }
-.cv-record-star { min-width: 32px; min-height: 32px; width: 32px; height: 32px; padding: 8px; flex-shrink: 0; }
 .cv-record-btn.cv-record-plain { border-color: transparent; padding-left: 0; padding-right: 0; color: var(--cv-text-secondary); }
 .cv-record-btn.cv-record-plain:hover { background: transparent; color: var(--cv-text-primary); }
 .cv-record-btn.cv-record-danger { border-color: transparent; padding-right: 0; color: var(--cv-danger); }
@@ -3051,27 +3044,22 @@
 .cv-record .cv-star.is-on { color: var(--cv-star); }
 .cv-record .cv-star:hover.is-on { color: var(--cv-on-accent); }
 .cv-record .cv-star.is-on svg { fill: currentColor; }
-.cv-record-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 6px; border-top: 1px solid var(--cv-border); color: var(--cv-text-tertiary); font-size: 9px; }
-.cv-record-flip { display: inline-flex; align-items: center; gap: 5px; min-height: 32px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--cv-text-secondary); font-size: 10px; white-space: nowrap; cursor: pointer; }
-.cv-record-flip:hover { color: var(--cv-text-primary); }
-.cv-record.is-active .cv-record-status::before { content: ""; display: inline-block; width: 4px; height: 4px; margin-right: 5px; border-radius: 50%; background: var(--cv-accent); }
-.cv-record-sleeve { display: flex; }
-.cv-sleeve-frame { display: flex; flex-direction: column; flex: 1; min-width: 0; padding: 14px 10px; border: 1px solid #171514aa; }
+.cv-record-flip { display: grid; place-items: center; flex-shrink: 0; width: 34px; height: 34px; padding: 0; border: 1px solid var(--cv-border); border-radius: 50%; background: transparent; color: var(--cv-text-secondary); cursor: pointer; }
+.cv-record-flip:hover { color: var(--cv-text-primary); background: var(--cv-accent-muted); }
+.cv-record-sleeve { display: flex; padding: 16px; }
+.cv-sleeve-frame { display: flex; flex-direction: column; flex: 1; min-width: 0; padding: 12px 10px; border: 1px solid #171514aa; }
 .cv-sleeve-frame .cv-kicker { font-size: 7px; color: #514a3b; letter-spacing: 1px; }
-.cv-sleeve-frame > strong { font-size: 22px; line-height: 1.4; font-weight: 900; margin-top: 22px; overflow-wrap: anywhere; }
-.cv-sleeve-letter { display: flex; justify-content: space-between; align-items: baseline; font-size: clamp(70px, 20cqi, 140px); font-weight: 900; letter-spacing: -.08em; line-height: 1; margin-top: auto; padding: 15px 0; }
+.cv-sleeve-letter { display: flex; flex: 1; justify-content: space-between; align-items: center; font-size: 72px; font-size: clamp(48px, 13cqi, 88px); font-weight: 900; letter-spacing: -.08em; line-height: 1; padding: 8px 0; }
 .cv-sleeve-letter > span { font-size: .4em; }
-.cv-sleeve-caption { padding-top: 10px; border-top: 1px solid #17151470; font-size: 8px; font-weight: 700; }
-.cv-record-back-title { margin: 5px 0 0; font-size: 20px; font-weight: 900; line-height: 1.35; letter-spacing: -.06em; }
-.cv-record-story { margin: 0; font-size: 12px; font-weight: 700; line-height: 1.6; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.cv-record-filename { margin: 5px 0 0; font-size: 9px; line-height: 1.6; color: var(--cv-text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cv-record-tools { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-block: 1px solid var(--cv-border); margin: 16px 0 0; }
-.cv-record-tool { min-width: 0; display: flex; align-items: flex-start; gap: 7px; padding: 13px 3px; border: 0; border-radius: 0; background: transparent; color: var(--cv-text-primary); text-align: left; font-size: 11px; font-weight: 700; line-height: 1.4; cursor: pointer; }
-.cv-record-tool:nth-child(-n+2) { border-bottom: 1px solid var(--cv-border); }
-.cv-record-tool:nth-child(even) { padding-left: 8px; }
-.cv-record-tool small { display: block; margin-top: 5px; font-size: 9px; color: var(--cv-text-secondary); font-weight: 400; }
+.cv-sleeve-caption { padding-top: 8px; border-top: 1px solid #17151470; font-size: 9px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cv-record-back-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.cv-record-story { min-width: 0; margin: 0; font-size: 15px; font-weight: 700; line-height: 1.6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cv-record-tools { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 10px; border-block: 1px solid var(--cv-border); margin: 8px 0; padding: 3px 0; }
+.cv-record-tool { min-width: 0; min-height: 40px; display: flex; align-items: center; gap: 8px; padding: 4px; border: 0; border-radius: 5px; background: transparent; color: var(--cv-text-primary); text-align: left; font-size: 12px; font-weight: 500; line-height: 1.4; cursor: pointer; }
+.cv-record-tool svg { color: var(--cv-text-secondary); }
 .cv-record-tool:hover { background: var(--cv-accent-muted); }
-.cv-record-secondary { margin-top: auto; padding-top: 16px; }
+.cv-record-secondary { justify-content: space-between; margin-top: auto; gap: 8px; }
+.cv-record-secondary .cv-record-btn { min-height: 34px; padding: 6px 10px; font-size: 11px; }
 
 /* Reading, forms and tools use the same type scale and surface palette. */
 #chatvault_panel .cv-reader-column { max-width: 860px; margin-inline: auto; }
@@ -3141,15 +3129,16 @@
 #chatvault_settings input { accent-color: var(--cv-accent); }
 
 @container cv-record (max-width: 440px) {
-    .cv-record-face { grid-template-columns: 1fr; min-height: 0; }
-    .cv-record-cover { padding: 18px 20px 13px; }
-    .cv-cover-frame { aspect-ratio: 16 / 9; }
-    .cv-cover-caption { margin-top: 0; }
-    .cv-record-info { min-height: 345px; padding: 22px 24px 12px; }
-    .cv-record-sleeve { padding: 20px; min-height: 220px; }
-    .cv-sleeve-frame { position: relative; min-height: 170px; }
-    .cv-sleeve-letter { position: absolute; right: 15px; top: 20px; font-size: 115px; opacity: .18; padding: 0; }
-    .cv-sleeve-caption { margin-top: auto; }
+    .cv-record-face { min-height: 196px; }
+    .cv-record-front .cv-record-info { padding: 16px; gap: 8px; }
+    .cv-record-title { font-size: 18px; }
+    #chatvault_panel .cv-record .cv-preview { min-height: 3.4em; max-height: 3.4em; font-size: 12px; line-height: 1.7; }
+    .cv-record-primary { gap: 4px 12px; }
+    .cv-record-primary .cv-record-btn { padding: 7px 10px; font-size: 11px; gap: 6px; }
+    .cv-record-primary .cv-record-plain { padding-inline: 0; }
+    .cv-record-back { grid-template-columns: minmax(0, 1fr); }
+    .cv-record-back .cv-record-info { padding: 12px 16px; }
+    .cv-record-sleeve { display: none; }
 }
 @media (min-width: 721px) {
     #chatvault_panel.cv-layout-narrow .cv-header { padding: 20px; gap: 14px; }
@@ -3169,7 +3158,7 @@
     #chatvault_panel .cv-tab { padding: 9px 5px; font-size: 11px; }
     #chatvault_panel .cv-tab-count { font-size: 9px; margin-left: 3px; }
     #chatvault_panel .cv-status { padding: 0 18px 12px; }
-    #chatvault_panel .cv-list-grid, #chatvault_panel .cv-group.is-open .cv-group-list { display: flex; flex-direction: column; gap: 20px; }
+    #chatvault_panel .cv-list-grid, #chatvault_panel .cv-group.is-open .cv-group-list { display: flex; flex-direction: column; gap: 16px; }
     #chatvault_panel .cv-group-header { gap: 8px; padding: 12px; flex-wrap: wrap; }
     #chatvault_panel .cv-group-name { font-size: 14px; flex: 1; }
     #chatvault_panel .cv-group-count { margin-left: 0; font-size: 10px; }
@@ -3183,9 +3172,13 @@
     .cv-theme-choice { font-size: 11px; gap: 7px; padding: 10px; }
 }
 @supports not (container-type: inline-size) {
-    .cv-record-face { grid-template-columns: 1fr; }
-    .cv-cover-frame { aspect-ratio: 16 / 9; }
-    .cv-record-sleeve { min-height: 220px; }
+    .cv-record-front .cv-record-info { padding: 14px; gap: 8px; }
+    .cv-record-title { font-size: 18px; }
+    .cv-record-primary { gap: 4px 10px; }
+    .cv-record-primary .cv-record-btn { padding-inline: 10px; font-size: 11px; }
+    .cv-record-primary .cv-record-plain { padding-inline: 0; }
+    .cv-record-back { grid-template-columns: minmax(0, 1fr); }
+    .cv-record-sleeve { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
     #chatvault_panel .cv-reader-stage { scroll-behavior: auto; }

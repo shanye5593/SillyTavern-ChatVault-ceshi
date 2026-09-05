@@ -79,13 +79,64 @@ test('long titles and special characters retain full text without creating HTML'
 });
 
 test('a missing cover uses the character initial and keeps card actions', () => {
-    const f = fixture();
+    const f = fixture({ cardMotion: false });
     const card = f.seed(undefined, { name: '无封面角色', avatar: '' });
     assert.equal(card.querySelector('img'), null);
     assert.equal(card.querySelector('.cv-cover-initial').textContent, '无');
     access(card, 'front');
+    const cover = card.querySelector('.cv-record-cover');
+    assert.equal(cover.tagName, 'BUTTON');
+    cover.focus();
+    f.click(cover);
+    settled(f, card);
     f.click(card.querySelector('[data-act="star"]'));
     assert.equal(card.querySelector('[data-act="star"]').getAttribute('aria-pressed'), 'true');
+    f.click(card.querySelector('.cv-record-back [data-act="flip"]'));
+    settled(f, card, 'front');
+    assert.equal(f.document.activeElement, cover);
+});
+
+test('compact front routes reading and jumping to the original chat and keeps management on the back', () => {
+    const f = fixture({ cardMotion: false });
+    const file = '存档 & "第一章".jsonl';
+    const card = f.seed([{ file_name: file }]);
+    const front = card.querySelector('.cv-record-front');
+    f.run(`
+        var entryCalls = [];
+        enterReader = (person, file) => entryCalls.push(['reader', person.name, file]);
+        jumpToChat = (person, file) => entryCalls.push(['open', person.name, file]);
+        openEditModal = (person, file) => entryCalls.push(['edit', person.name, file]);
+    `);
+    f.click(front.querySelector('[data-act="reader"]'));
+    f.click(front.querySelector('[data-act="open"]'));
+    assert.equal(f.run('cardTurns.size'), 0);
+    assert.equal(front.querySelector('[data-act="edit"]'), null);
+    assert.equal(front.querySelector('[data-act="star"]'), null);
+    f.click(front.querySelector('[data-act="flip"]'));
+    access(card, 'back');
+    f.click(card.querySelector('.cv-record-back [data-act="edit"]'));
+    assert.deepEqual(JSON.parse(f.run('JSON.stringify(entryCalls)')), [
+        ['reader', '测试角色', file], ['open', '测试角色', file], ['edit', '测试角色', file],
+    ]);
+});
+
+test('compact preview retains cached literal text and does not flip when selected', () => {
+    const f = fixture();
+    const text = '<think>不应显示</think>窗外的雨 <b>还没有停</b> & "来信"';
+    f.context.previewText = text;
+    f.run(`setupPreviewObserver(); previewCacheSet(metaKey('fixture.png', '第一段故事'), previewText);`);
+    const card = f.seed();
+    const preview = card.querySelector('.cv-record-front .cv-preview');
+    assert.equal(preview.textContent, '窗外的雨 <b>还没有停</b> & "来信"');
+    assert.equal(preview.querySelector('b'), null);
+    assert.equal(preview.classList.contains('is-loading'), false);
+    assert.equal(preview.listeners.has('contextmenu'), true);
+    assert.equal(preview.listeners.has('pointerdown'), true);
+    card.onclick({ target: preview });
+    assert.equal(f.run('cardTurns.size'), 0);
+    access(card, 'front');
+    f.run('render();');
+    assert.equal(f.document.querySelector('.cv-preview').textContent, preview.textContent);
 });
 
 test('an unavailable cover image hides itself to reveal the fallback', () => {
@@ -137,6 +188,9 @@ test('pagination during a flip cancels old cards and makes new cards usable', as
     const next = f.document.querySelector('.cv-record');
     assert.equal(f.document.querySelectorAll('.cv-record').length, 1);
     access(next, 'front');
+    f.motion.matches = true;
+    f.click(next.querySelector('.cv-record-cover'));
+    settled(f, next);
     f.click(next.querySelector('[data-act="star"]'));
     assert.equal(next.querySelector('[data-act="star"]').getAttribute('aria-pressed'), 'true');
 });
