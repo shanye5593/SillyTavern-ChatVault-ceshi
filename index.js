@@ -1366,6 +1366,9 @@ function renderCard(character, chat) {
     const name = character.name || '未命名角色';
     const flipIcon = ICONS.refresh;
     const starButton = `<button class="cv-record-btn cv-star${starred ? ' is-on' : ''}" data-act="star" type="button" aria-label="收藏聊天" aria-pressed="${starred}" title="收藏聊天">${ICONS.star}<span>收藏</span></button>`;
+    const tags = Array.isArray(meta.tags) ? meta.tags.filter(tag => String(tag).trim()) : [];
+    const sizeText = fmtSize(chat.file_size) || '未知';
+    const bookmarkButton = `<button class="cv-star cv-record-bookmark${starred ? ' is-on' : ''}" data-act="star" type="button" aria-label="收藏聊天" aria-pressed="${starred}" title="收藏聊天"><span class="cv-bookmark-icon cv-bookmark-off" aria-hidden="true">${ICONS.bookmarkPlus}</span><span class="cv-bookmark-icon cv-bookmark-on" aria-hidden="true">${ICONS.bookmark}</span></button>`;
 
     return `
         <article class="cv-card cv-record ${active ? 'is-active' : ''}" data-avatar="${escapeHtml(character.avatar)}" data-name="${escapeHtml(character.name || '')}" data-file="${escapeHtml(chat.file_name)}" aria-label="${escapeHtml(name + ' · ' + displayTitle)}">
