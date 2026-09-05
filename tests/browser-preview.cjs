@@ -42,7 +42,18 @@ const server = http.createServer((req, res) => {
     }
     const entry = routes.get(url.pathname);
     if (!entry) return send(404, 'text/plain', 'Not found');
-    try { send(200, entry[1], fs.readFileSync(path.join(root, entry[0]))); }
+    try {
+        let body = fs.readFileSync(path.join(root, entry[0]), 'utf8');
+        // Exercise fallback CSS in a modern engine; this does not emulate an old browser.
+        if (url.searchParams.get('legacy') === '1') {
+            if (url.pathname === '/') body = body.replace('href="/style.css"', 'href="/style.css?legacy=1"');
+            if (url.pathname === '/style.css') body = body
+                .replace('container: cv-record / inline-size;', '')
+                .replace('@container cv-record (max-width: 440px)', '@media not all')
+                .replace('@supports not (container-type: inline-size)', '@supports (display: grid)');
+        }
+        send(200, entry[1], body);
+    }
     catch { send(500, 'text/plain', 'Cannot read fixture file'); }
 });
 server.listen(4178, '127.0.0.1', () => console.log('ChatVault browser fixture: http://127.0.0.1:4178 (Ctrl+C to stop)'));

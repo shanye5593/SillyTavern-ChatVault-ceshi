@@ -1364,8 +1364,6 @@ function renderCard(character, chat) {
                    : (typeof chat.chat_items === 'number' ? chat.chat_items : null);
     const active = isActiveChat(character, chat.file_name);
     const name = character.name || '未命名角色';
-    const flipIcon = ICONS.refresh;
-    const starButton = `<button class="cv-record-btn cv-star${starred ? ' is-on' : ''}" data-act="star" type="button" aria-label="收藏聊天" aria-pressed="${starred}" title="收藏聊天">${ICONS.star}<span>收藏</span></button>`;
     const tags = Array.isArray(meta.tags) ? meta.tags.filter(tag => String(tag).trim()) : [];
     const sizeText = fmtSize(chat.file_size) || '未知';
     const bookmarkButton = `<button class="cv-star cv-record-bookmark${starred ? ' is-on' : ''}" data-act="star" type="button" aria-label="收藏聊天" aria-pressed="${starred}" title="收藏聊天"><span class="cv-bookmark-icon cv-bookmark-off" aria-hidden="true">${ICONS.bookmarkPlus}</span><span class="cv-bookmark-icon cv-bookmark-on" aria-hidden="true">${ICONS.bookmark}</span></button>`;
@@ -1373,6 +1371,7 @@ function renderCard(character, chat) {
     return `
         <article class="cv-card cv-record ${active ? 'is-active' : ''}" data-avatar="${escapeHtml(character.avatar)}" data-name="${escapeHtml(character.name || '')}" data-file="${escapeHtml(chat.file_name)}" aria-label="${escapeHtml(name + ' · ' + displayTitle)}">
           <span class="cv-record-shadow" aria-hidden="true"></span>
+          ${bookmarkButton}
           <div class="cv-record-lift">
             <div class="cv-record-turn" tabindex="-1">
               <div class="cv-record-face cv-record-front" aria-hidden="false">
@@ -1386,9 +1385,10 @@ function renderCard(character, chat) {
                   <div class="cv-record-heading">
                     <div class="cv-record-meta">
                       <span class="cv-record-character" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
-                      <span class="cv-record-count">${msgCount === null ? '楼层数未知' : `共 ${msgCount} 楼`}</span>
+                      <span class="cv-record-count" title="${msgCount === null ? '楼层数未知' : `共 ${msgCount} 楼`}" aria-label="${msgCount === null ? '楼层数未知' : `共 ${msgCount} 楼`}"><span aria-hidden="true">${ICONS.msg}</span><span>${msgCount === null ? '未知' : msgCount}</span></span>
                     </div>
                     <h3 class="cv-record-title" title="${escapeHtml(displayTitle)}">${highlight(displayTitle, searchQuery)}</h3>
+                    ${tags.length ? `<div class="cv-record-tags" aria-label="聊天标签">${tags.map(tag => `<span class="cv-record-tag" title="${escapeHtml(tag)}">${escapeHtml(tag)}</span>`).join('')}</div>` : ''}
                   </div>
                   <div class="cv-preview is-loading" data-preview="1" aria-label="右键或长按查看完整预览">加载预览中…</div>
                   <div class="cv-record-primary">
@@ -1399,13 +1399,12 @@ function renderCard(character, chat) {
                 <span class="cv-record-light" aria-hidden="true"></span>
               </div>
               <div class="cv-record-face cv-record-back" aria-hidden="true" inert>
-                <div class="cv-record-sleeve" aria-hidden="true">
-                  <div class="cv-sleeve-frame"><span class="cv-kicker">CHATVAULT RECORDS</span><span class="cv-sleeve-letter">B<span>↗</span></span><span class="cv-sleeve-caption" title="${escapeHtml(name)}">${escapeHtml(name)}${msgCount === null ? '' : ` · ${msgCount} 条`}</span></div>
-                </div>
+                <button class="cv-record-sleeve" data-act="flip" type="button" aria-label="翻回正面，查看故事">
+                  <span class="cv-sleeve-frame"><span class="cv-kicker" aria-hidden="true">CHATVAULT RECORDS</span><span class="cv-sleeve-letter" aria-hidden="true">B<span>↗</span></span><span class="cv-sleeve-caption"><span class="cv-sleeve-character" title="${escapeHtml(name)}">${escapeHtml(name)}</span><span class="cv-sleeve-size" title="文件大小：${escapeHtml(sizeText)}"><span aria-hidden="true">${ICONS.file}</span><span>${escapeHtml(sizeText)}</span></span></span></span>
+                </button>
                 <div class="cv-record-info">
                   <div class="cv-record-back-top">
                     <h3 class="cv-record-story" title="${escapeHtml(displayTitle)}">${highlight(displayTitle, searchQuery)}</h3>
-                    <button class="cv-record-flip" data-act="flip" type="button" aria-label="回到正面">${flipIcon}</button>
                   </div>
                   <div class="cv-record-tools">
                     <button class="cv-record-tool" data-act="edit" type="button">${ICONS.edit}<span>编辑资料</span></button>
@@ -1413,7 +1412,7 @@ function renderCard(character, chat) {
                     <button class="cv-record-tool" data-act="rules" type="button">${ICONS.gear}<span>摘取规则</span></button>
                     <button class="cv-record-tool" data-act="export" type="button">${ICONS.download}<span>导出记录</span></button>
                   </div>
-                  <div class="cv-record-secondary">${starButton}<button class="cv-record-btn cv-record-danger" data-act="delete" type="button">${ICONS.trash}<span>删除聊天</span></button></div>
+                  <div class="cv-record-secondary"><button class="cv-record-btn cv-record-danger" data-act="delete" type="button">${ICONS.trash}<span>删除聊天</span></button></div>
                 </div>
                 <span class="cv-record-light" aria-hidden="true"></span>
               </div>
@@ -5099,7 +5098,10 @@ function normalizeWindowState(st, mode) {
 }
 
 function applyWindowState(overlay, panel, modeOverride = '') {
-    if (isMobileLayout()) return;
+    if (isMobileLayout()) {
+        applyPanelLayoutClass(panel, 'narrow');
+        return;
+    }
     const s = loadSettings();
     const mode = applyPanelModeClasses(overlay, panel, getDesktopPanelMode(s, modeOverride));
     if (s.windowFreeMode || mode === 'dock') overlay.classList.add('cv-window-free');
@@ -5179,6 +5181,21 @@ function _bindPanelResize(panel, overlay, handle, dir) {
 }
 
 function initWindowChrome(overlay, panel) {
+    // Keep the CSS fallback layout in sync on mobile as well as desktop.
+    const onWinResize = () => {
+        if (isMobileLayout()) {
+            applyPanelLayoutClass(panel, 'narrow');
+            return;
+        }
+        if (!overlay.classList.contains('cv-window-positioned')) {
+            applyPanelLayoutClass(panel, getLayoutForWidth(panel.getBoundingClientRect().width));
+            return;
+        }
+        applyPanelBox(panel, overlay, getCurrentState(panel), false);
+    };
+    window.addEventListener('resize', onWinResize);
+    // closePanel removes this listener from the overlay (panelEl).
+    overlay._cvOnResize = onWinResize;
     if (isMobileLayout()) return;
 
     ['w', 'e', 'se'].forEach(dir => {
@@ -5199,16 +5216,6 @@ function initWindowChrome(overlay, panel) {
     const header = panel.querySelector('.cv-header');
     if (header) _bindDrag(panel, overlay, header);
 
-    // 视口尺寸变化：重新夹回
-    const onWinResize = () => {
-        if (isMobileLayout()) return;
-        if (!overlay.classList.contains('cv-window-positioned')) return;
-        applyPanelBox(panel, overlay, getCurrentState(panel), false);
-    };
-    window.addEventListener('resize', onWinResize);
-    // v0.5.16 fix: 必须挂在 overlay（= panelEl）上，因为 closePanel 用 panelEl._cvOnResize 查找；
-    // 之前挂在 inner panel 节点上 → closePanel 永远找不到 → 反复开关面板 resize 监听器无限堆积
-    overlay._cvOnResize = onWinResize;
 }
 
 function resetWindow() {

@@ -149,6 +149,95 @@ test('an unavailable cover image hides itself to reveal the fallback', () => {
     assert.equal(card.querySelector('.cv-cover-initial').textContent, '测');
 });
 
+test('card metadata shows escaped tags only when present and preserves count descriptions', () => {
+    const f = fixture();
+    const tags = ['日常', '<img src=x onerror=alert(1)> & "标签"', ' '];
+    f.context.testTags = tags;
+    f.run("patchMetaFor('fixture.png', '有标签', { tags: testTags });");
+    let card = f.seed([{ file_name: '有标签', mes: 0 }]);
+    assert.equal(card.querySelector('.cv-record-count').textContent, '0');
+    assert.equal(card.querySelector('.cv-record-count').getAttribute('title'), '共 0 楼');
+    assert.ok(card.querySelector('.cv-record-count svg'));
+    assert.deepEqual(card.querySelectorAll('.cv-record-tag').map(tag => tag.textContent), tags.slice(0, 2));
+    assert.equal(card.querySelector('.cv-record-tags img'), null);
+    assert.equal(card.querySelectorAll('.cv-record-tags')[0].parentElement, card.querySelector('.cv-record-heading'));
+    card = f.seed([{ file_name: '无标签', chat_items: 27 }]);
+    assert.equal(card.querySelector('.cv-record-count').textContent, '27');
+    assert.equal(card.querySelector('.cv-record-tags'), null);
+    f.run("patchMetaFor('fixture.png', '旧数据', { tags: '不是数组' });");
+    card = f.seed([{ file_name: '旧数据' }]);
+    assert.equal(card.querySelector('.cv-record-count').textContent, '未知');
+    assert.equal(card.querySelector('.cv-record-count').getAttribute('title'), '楼层数未知');
+    assert.equal(card.querySelector('.cv-record-tags'), null);
+});
+
+test('the sleeve is the accessible return control and formats or escapes file sizes', () => {
+    const f = fixture({ cardMotion: false });
+    for (const [size, expected] of [[2048, '2 KB'], [0, '0 B'], [undefined, '未知'], ['<img src=x> & "KB"', '<img src=x> & "KB"']]) {
+        const card = f.seed([{ file_name: '大小测试', file_size: size }]);
+        const sleeve = card.querySelector('.cv-record-sleeve');
+        assert.equal(sleeve.tagName, 'BUTTON');
+        assert.equal(sleeve.getAttribute('data-act'), 'flip');
+        assert.equal(sleeve.getAttribute('aria-label'), '翻回正面，查看故事');
+        assert.equal(sleeve.querySelector('.cv-sleeve-letter').getAttribute('aria-hidden'), 'true');
+        assert.equal(sleeve.querySelector('.cv-sleeve-size').textContent, expected);
+        assert.equal(sleeve.querySelector('.cv-sleeve-size').getAttribute('title'), '文件大小：' + expected);
+        assert.equal(sleeve.querySelector('img'), null);
+        assert.ok(sleeve.querySelector('.cv-sleeve-size svg'));
+        assert.equal(card.querySelector('.cv-record-flip'), null);
+        assert.equal(card.querySelectorAll('.cv-record-secondary button').length, 1);
+        f.click(card.querySelector('.cv-record-cover'));
+        assert.equal(f.document.activeElement, sleeve);
+        f.click(sleeve);
+        settled(f, card, 'front');
+        assert.equal(f.document.activeElement, card.querySelector('.cv-record-cover'));
+    }
+});
+
+test('the shared bookmark works from either face and persists without flipping the card', () => {
+    const f = fixture({ cardMotion: false });
+    let card = f.seed();
+    const bookmark = card.querySelector('.cv-record-bookmark');
+    assert.equal(bookmark.parentElement, card);
+    assert.equal(card.querySelectorAll('[data-act="star"]').length, 1);
+    f.click(bookmark);
+    access(card, 'front');
+    assert.equal(bookmark.getAttribute('aria-pressed'), 'true');
+    assert.equal(f.run("getMetaFor('fixture.png', '第一段故事').starred"), true);
+    f.click(card.querySelector('.cv-record-cover'));
+    f.click(bookmark);
+    access(card, 'back');
+    assert.equal(bookmark.getAttribute('aria-pressed'), 'false');
+    assert.equal(bookmark.classList.contains('is-on'), false);
+    f.click(bookmark);
+    f.run('render();');
+    card = f.document.querySelector('.cv-record');
+    assert.equal(card.querySelector('.cv-record-bookmark').getAttribute('aria-pressed'), 'true');
+    assert.equal(card.querySelector('.cv-record-bookmark').classList.contains('is-on'), true);
+});
+
+test('mobile opening and viewport changes set the fallback layout and clean up the resize listener', () => {
+    const f = fixture();
+    const panel = f.document.getElementById('chatvault_panel');
+    const overlay = f.document.getElementById('chatvault_overlay');
+    const resizeListeners = new Set();
+    f.context.window.addEventListener = (type, handler) => { if (type === 'resize') resizeListeners.add(handler); };
+    f.context.window.removeEventListener = (type, handler) => { if (type === 'resize') resizeListeners.delete(handler); };
+    f.run('isMobileLayout = () => true;');
+    f.run("applyWindowState(panelEl, document.getElementById('chatvault_panel')); initWindowChrome(panelEl, document.getElementById('chatvault_panel'));");
+    assert.equal(panel.classList.contains('cv-layout-narrow'), true);
+    assert.equal(resizeListeners.size, 1);
+    f.run('isMobileLayout = () => false;');
+    panel.getBoundingClientRect = () => ({ width: 1200 });
+    overlay._cvOnResize();
+    assert.equal(panel.classList.contains('cv-layout-wide'), true);
+    f.run('isMobileLayout = () => true;');
+    overlay._cvOnResize();
+    assert.equal(panel.classList.contains('cv-layout-narrow'), true);
+    f.run('closePanel();');
+    assert.equal(resizeListeners.size, 0);
+});
+
 test('flipping locks repeat actions and restores focus to the visible side', async () => {
     const f = fixture(), card = f.seed();
     f.click(card.querySelector('[data-act="flip"]'));

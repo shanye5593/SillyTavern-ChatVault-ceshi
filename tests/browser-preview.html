@@ -14,6 +14,7 @@
     <h1>ChatVault 本地浏览器验证</h1>
     <p>实际插件代码 + 合成角色与聊天；用于布局、裁切和交互检查。</p>
     <button id="fixture-open">打开档案</button><button id="fixture-dock">打开停靠面板</button>
+    <p><a href="/?legacy=1">模拟旧浏览器窄卡样式</a> · <a href="/">容器查询样式</a></p>
     <p>不连接酒馆，不提供保存、删除或跳转到真实聊天的接口。刷新页面可重置演示设置。</p>
 </main>
 <div id="fixture-note">本地合成数据 · 非酒馆联调</div>
@@ -24,6 +25,7 @@
     saveSettings({ ...DEFAULT_SETTINGS, readerRichRender: false });
     charactersCache = fixtureCharacters;
     chatsByAvatar = fixtureChats;
+    fixtureCharacters.forEach((character, i) => patchMetaFor(character.avatar, fixtureTitles[i], { tags: fixtureTags[i] }));
     document.getElementById('fixture-open').onclick = () => openPanel('modal');
     document.getElementById('fixture-dock').onclick = () => openPanel('dock');
     openPanel();

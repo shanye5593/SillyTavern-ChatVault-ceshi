@@ -10,7 +10,7 @@ const fixtureCharacters = [
     { name: '林间来信', avatar: 'portrait.svg' },
     { name: '海边电台', avatar: 'landscape.svg' },
     { name: '封面失效', avatar: 'missing.svg' },
-    { name: '无封面', avatar: '' },
+    { name: '无封面与需要换行的很长角色名称', avatar: '' },
 ];
 const fixtureTitles = [
     '雨停之前',
@@ -19,8 +19,9 @@ const fixtureTitles = [
     '没有封面的旧日手记',
 ];
 const fixtureChats = Object.fromEntries(fixtureCharacters.map((character, i) => [character.avatar, [
-    { file_name: fixtureTitles[i], mes: 4, last_mes: 1788564000000 - i * 1000 },
+    { file_name: fixtureTitles[i], mes: i === 3 ? undefined : 4, file_size: [4096, 131072, undefined, '256 KB'][i], last_mes: 1788564000000 - i * 1000 },
 ]]));
+const fixtureTags = [['日常', '来信', '雨季'], ['这是一个需要省略的很长标签', ...Array.from({ length: 12 }, (_, i) => '夏日回忆' + (i + 1))], [], []];
 function fixtureMessages(name) {
     return [
         { chat_metadata: {} },
