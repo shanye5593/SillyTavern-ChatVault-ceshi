@@ -10,8 +10,8 @@ const SETTINGS_KEY = 'st-chatvault-settings';
 const PAGE_SIZE = 50;
 const CHAR_PAGE_SIZE = 30;   // 「按角色」tab 每页角色卡数（含 0 聊天）
 const THEMES = [
-    { id: 'dark',   name: '夜间 Dark' },
-    { id: 'light',  name: '白底 Light' },
+    { id: 'dark',   name: '炭黑 Archive' },
+    { id: 'light',  name: '纸白 Paper' },
     { id: 'coffee', name: '咖啡 Coffee' },
     { id: 'custom', name: '自定义' },
 ];
@@ -51,6 +51,14 @@ const DEFAULT_CUSTOM_REGEX = { builtinFold: true, items: [] };
 const DEFAULT_SETTINGS = {
     enabled: true,
     theme: 'dark',
+    cardMotion: true,
+    readerTextStyles: true,
+    readerDialogueColor: '',
+    readerThoughtColor: '',
+    readerDialogueOpen: '',
+    readerDialogueClose: '',
+    readerThoughtOpen: '',
+    readerThoughtClose: '',
     // 摘取规则（v0.3.14 起阅读 / 导出共用一套，从主面板卡片折叠区进入编辑）
     strip:   { ...DEFAULT_STRIP },
     extract: { ...DEFAULT_EXTRACT },
@@ -819,14 +827,16 @@ function openPanel(modeOverride = '') {
         <div id="chatvault_panel" onclick="event.stopPropagation()">
             <div class="cv-header">
                 <div class="cv-titleblock">
-                    <h1>聊天档案<span class="cv-snapshot-dot" id="cv_snapshot_dot" title="当前显示快照 · 点右上角刷新键同步最新"></span></h1>
+                    <span class="cv-kicker">YOUR STORY COLLECTION</span>
+                    <h1>ChatVault<span class="cv-brand-dot">.</span><span class="cv-snapshot-dot" id="cv_snapshot_dot" title="当前显示快照 · 点右上角刷新键同步最新"></span></h1>
                 </div>
                 <div class="cv-search-wrap">
-                    <input type="text" class="cv-search" id="cv_search" placeholder="搜索角色名 / 聊天标题 / 标签…" />
+                    <input type="search" class="cv-search" id="cv_search" aria-label="搜索聊天档案" placeholder="寻找角色、故事或标签…" />
                 </div>
                 <div class="cv-header-actions">
-                    <button class="cv-icon-btn cv-refresh-btn" id="cv_refresh" title="手动刷新（重新加载所有角色和聊天）">${ICONS.refresh}</button>
-                    <button class="cv-icon-btn" id="cv_close" title="关闭 (Esc)">✕</button>
+                    <button class="cv-icon-btn" id="cv_panel_settings" type="button" aria-label="外观设置" title="外观设置">${ICONS.gear}</button>
+                    <button class="cv-icon-btn cv-refresh-btn" id="cv_refresh" type="button" aria-label="刷新聊天档案" title="手动刷新（重新加载所有角色和聊天）">${ICONS.refresh}</button>
+                    <button class="cv-icon-btn" id="cv_close" type="button" aria-label="关闭聊天档案" title="关闭 (Esc)">${ICONS.close}</button>
                 </div>
             </div>
             <div class="cv-tabbar">
@@ -857,6 +867,7 @@ function openPanel(modeOverride = '') {
     initWindowChrome(panelEl, _panel);
 
     document.getElementById('cv_close').onclick = closePanel;
+    document.getElementById('cv_panel_settings').onclick = openVaultSettingsModal;
     document.getElementById('cv_refresh').onclick = (e) => {
         e.stopPropagation();
         const btn = e.currentTarget;
@@ -907,10 +918,13 @@ function escHandler(e) {
     // 如果有打开的 modal 先关 modal
     const modal = document.getElementById('cv_modal');
     if (modal) { modal.remove(); return; }
+    const card = document.activeElement?.closest?.('.cv-record');
+    if (card && card.querySelector('.cv-record-turn.is-back')) { turnRecord(card, true); return; }
     closePanel();
 }
 
 function closePanel() {
+    cancelCardTurns();
     closePreviewTip();
     // 阅读模式楼层菜单可能还开着；它在 document 上挂了 mousedown/touchstart capture 监听
     // 不显式 close 会导致这两个监听器残留 + 闭包持有已 detach 的菜单节点
@@ -1006,6 +1020,7 @@ function bindPaginationAutoHide() {
  * ============================================================ */
 
 async function loadAll() {
+    cancelCardTurns();
     const loadToken = ++loadAllToken; // 防止重复打开造成的并发污染
     // 主刷新时同时让预览缓存重新生成，避免「酒馆里改完档回来还看到旧首句」
     previewCache.clear();
@@ -1174,6 +1189,7 @@ function updateTabCounts() {
 
 function render() {
     if (!panelEl) return; // 面板已被关闭，忽略残留的异步回调
+    cancelCardTurns();
     const body = document.getElementById('cv_body');
     if (!body) return;
     if (readerState.active) { renderReader(); return; }
@@ -1342,7 +1358,6 @@ function renderCard(character, chat, hideCharName = false) {
     const meta = getMetaFor(character.avatar, chat.file_name);
     const customTitle = meta.customTitle || '';
     const displayTitle = customTitle || chat.file_name || '(未命名)';
-    const titleClass = customTitle ? '' : 'is-default';
     const tags = Array.isArray(meta.tags) ? meta.tags : [];
     const starred = !!meta.starred;
     const avatarUrl = character.avatar
@@ -1360,49 +1375,71 @@ function renderCard(character, chat, hideCharName = false) {
     ].filter(Boolean).join('');
 
     const tagsHtml = tags.length
-        ? `<span class="cv-meta-sep"></span><div class="cv-tags">${tags.map(t => `<span class="cv-tag">${highlight(t, searchQuery)}</span>`).join('')}</div>`
+        ? `<div class="cv-tags">${tags.map(t => `<span class="cv-tag">${highlight(t, searchQuery)}</span>`).join('')}</div>`
         : '';
 
-    // 第二行小字：角色名（在「按角色」/「当前角色」tab 隐藏）
-    const subLine = hideCharName ? '' : `
-        <div class="cv-card-subline">
-            <span class="cv-character">${highlight(character.name || '', searchQuery)}</span>
-        </div>
-    `;
-
     const active = isActiveChat(character, chat.file_name);
-    const activeBadge = active ? `<span class="cv-active-badge" title="正在使用">使用中</span>` : '';
+    const activeBadge = active ? `<span class="cv-record-status">使用中</span>` : '<span class="cv-record-status">聊天档案</span>';
     const jumpLabel = active ? '已打开' : '继续';
+    const name = character.name || '未命名角色';
+    const flipIcon = ICONS.refresh;
+    const starButton = (round = false) => `<button class="cv-record-btn cv-star${round ? ' cv-record-star' : ''}${starred ? ' is-on' : ''}" data-act="star" type="button" aria-label="收藏聊天" aria-pressed="${starred}" title="收藏聊天">${ICONS.star}${round ? '' : '<span>收藏</span>'}</button>`;
 
     return `
-        <div class="cv-card ${active ? 'is-active' : ''}" data-avatar="${escapeHtml(character.avatar)}" data-name="${escapeHtml(character.name || '')}" data-file="${escapeHtml(chat.file_name)}">
-            <img class="cv-card-avatar" src="${avatarUrl}" onerror="this.style.visibility='hidden'" alt="" />
-            <div class="cv-card-main">
-                <div class="cv-card-row">
-                    <div class="cv-card-titleblock">
-                        <h3 class="cv-title ${titleClass}">${activeBadge}${highlight(displayTitle, searchQuery)}</h3>
-                        ${subLine}
-                    </div>
-                    <div class="cv-actions">
-                        <button class="cv-act cv-star ${starred ? 'is-on' : ''}" data-act="star" title="收藏">${ICONS.star}</button>
-                        <button class="cv-act" data-act="edit" title="编辑标题/标签">${ICONS.edit}</button>
-                        <button class="cv-act cv-act-delete" data-act="delete" title="删除">${ICONS.trash}</button>
-                        <span class="cv-act-divider"></span>
-                        <button class="cv-act cv-act-jump ${active ? 'is-active' : ''}" data-act="open" title="跳转到此聊天"><span>${jumpLabel}</span>${ICONS.jump}</button>
-                    </div>
+        <article class="cv-card cv-record ${active ? 'is-active' : ''}" data-avatar="${escapeHtml(character.avatar)}" data-name="${escapeHtml(character.name || '')}" data-file="${escapeHtml(chat.file_name)}" aria-label="${escapeHtml(name + ' · ' + displayTitle)}">
+          <span class="cv-record-shadow" aria-hidden="true"></span>
+          <div class="cv-record-lift">
+            <div class="cv-record-turn" tabindex="-1">
+              <div class="cv-record-face cv-record-front" aria-hidden="false">
+                <div class="cv-record-cover" data-card-cover="1">
+                  <div class="cv-cover-frame">
+                    <span class="cv-cover-initial" aria-hidden="true">${escapeHtml(name.slice(0, 1))}</span>
+                    ${avatarUrl ? `<img src="${avatarUrl}" loading="lazy" decoding="async" draggable="false" alt="${escapeHtml(name)}的角色封面" onerror="this.hidden=true"/>` : ''}
+                  </div>
+                  <span class="cv-cover-caption">CHATVAULT / STORIES</span>
                 </div>
-                <div class="cv-meta-row">
-                    ${meta1}
-                    ${tagsHtml}
+                <div class="cv-record-info">
+                  <div class="cv-record-top">
+                    <div class="cv-record-heading"><span class="cv-kicker">${hideCharName ? 'STORY' : 'CHARACTER'}</span><span class="cv-record-character">${highlight(name, searchQuery)}</span></div>
+                    ${starButton(true)}
+                  </div>
+                  <span class="cv-record-rule" aria-hidden="true"></span>
+                  <h3 class="cv-record-title" title="${escapeHtml(displayTitle)}">${highlight(displayTitle, searchQuery)}</h3>
+                  ${tagsHtml}
+                  <div class="cv-preview is-loading" data-preview="1" aria-label="右键或长按查看完整预览">加载预览中…</div>
+                  <div class="cv-record-metadata">${meta1}</div>
+                  <div class="cv-record-primary">
+                    <button class="cv-record-btn" data-act="reader" type="button">${ICONS.book}<span>阅读故事</span></button>
+                    <button class="cv-record-btn cv-record-plain" data-act="open" type="button" title="跳转到此聊天"><span>${jumpLabel}</span>${ICONS.jump}</button>
+                  </div>
+                  <div class="cv-record-footer">${activeBadge}<button class="cv-record-flip" data-act="flip" type="button" aria-label="翻到背面，管理聊天">翻到背面${flipIcon}</button></div>
                 </div>
-                <div class="cv-preview is-loading" data-preview="1" aria-label="右键或长按查看完整预览">加载预览中…</div>
-                <div class="cv-fold">
-                    <button class="cv-fold-btn cv-fold-primary" data-act="reader" type="button">${ICONS.book}<span>阅读模式</span></button>
-                    <button class="cv-fold-btn" data-act="rules" type="button">${ICONS.gear}<span>摘取规则</span></button>
-                    <button class="cv-fold-btn" data-act="export" type="button">${ICONS.download}<span>导出</span></button>
+                <span class="cv-record-light" aria-hidden="true"></span>
+              </div>
+              <div class="cv-record-face cv-record-back" aria-hidden="true" inert>
+                <div class="cv-record-sleeve" data-card-cover="1" aria-hidden="true">
+                  <div class="cv-sleeve-frame"><span class="cv-kicker">CHATVAULT RECORDS</span><strong>${escapeHtml(name)}</strong><span class="cv-sleeve-letter">B<span>↗</span></span><span class="cv-sleeve-caption">${msgCount === null ? 'CHAT ARCHIVE' : `${msgCount} 条消息`} / SIDE B</span></div>
                 </div>
+                <div class="cv-record-info">
+                  <span class="cv-kicker">THE DETAILS</span>
+                  <h3 class="cv-record-back-title">整理这段故事</h3>
+                  <span class="cv-record-rule" aria-hidden="true"></span>
+                  <p class="cv-record-story">${highlight(displayTitle, searchQuery)}</p>
+                  <p class="cv-record-filename" title="${escapeHtml(chat.file_name)}">${highlight(chat.file_name, searchQuery)}</p>
+                  <div class="cv-record-tools">
+                    <button class="cv-record-tool" data-act="edit" type="button">${ICONS.edit}<span>编辑资料<small>标题、标签与文件名</small></span></button>
+                    <button class="cv-record-tool" data-act="organize" type="button">${ICONS.msg}<span>整理楼层<small>顺序与消息管理</small></span></button>
+                    <button class="cv-record-tool" data-act="rules" type="button">${ICONS.gear}<span>摘取规则<small>留下想读的正文</small></span></button>
+                    <button class="cv-record-tool" data-act="export" type="button">${ICONS.download}<span>导出记录<small>TXT / JSONL</small></span></button>
+                  </div>
+                  <div class="cv-record-secondary">${starButton()}<button class="cv-record-btn cv-record-danger" data-act="delete" type="button">${ICONS.trash}<span>删除聊天</span></button></div>
+                  <div class="cv-record-footer"><span>${escapeHtml(sizeStr || '聊天档案')}</span><button class="cv-record-flip" data-act="flip" type="button" aria-label="翻回正面，查看故事">回到正面${flipIcon}</button></div>
+                </div>
+                <span class="cv-record-light" aria-hidden="true"></span>
+              </div>
             </div>
-        </div>
+          </div>
+        </article>
     `;
 }
 
@@ -1428,8 +1465,75 @@ function renderPagination(total, totalPages) {
  *  事件绑定
  * ============================================================ */
 
+const cardTurns = new Map();
+function setRecordAccess(card, side) {
+    card.querySelectorAll('.cv-record-face').forEach(face => {
+        const enabled = face.classList.contains(`cv-record-${side}`);
+        face.inert = !enabled;
+        face.setAttribute('aria-hidden', String(!enabled));
+        face.querySelectorAll('button').forEach(button => { button.tabIndex = enabled ? 0 : -1; });
+    });
+}
+function cancelCardTurns() {
+    [...cardTurns.values()].forEach(turn => turn.finish(false));
+}
+function turnRecord(card, keyboard = false) {
+    if (cardTurns.has(card)) return;
+    closePreviewTip();
+    const rotor = card.querySelector('.cv-record-turn');
+    const back = rotor.classList.contains('is-back');
+    const destination = back ? 'front' : 'back';
+    const focus = keyboard || rotor.contains(document.activeElement);
+    const motion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const turn = { animations: [], timer: null, finish: null };
+    const onMotion = () => { if (motion.matches) turn.finish(); };
+    turn.finish = (restoreFocus = true) => {
+        if (cardTurns.get(card) !== turn) return;
+        cardTurns.delete(card);
+        clearTimeout(turn.timer);
+        motion.removeEventListener?.('change', onMotion);
+        rotor.classList.toggle('is-back', !back);
+        setRecordAccess(card, destination);
+        turn.animations.forEach(animation => animation.cancel());
+        card.classList.remove('is-turning');
+        card.removeAttribute('aria-busy');
+        if (restoreFocus && focus && card.isConnected && document.activeElement === rotor && !document.getElementById('cv_modal')) {
+            card.querySelector(`.cv-record-${destination} [data-act="flip"]`).focus({ preventScroll: true });
+        }
+    };
+    cardTurns.set(card, turn);
+    if (focus) rotor.focus({ preventScroll: true });
+    setRecordAccess(card, 'none');
+    card.classList.add('is-turning');
+    card.setAttribute('aria-busy', 'true');
+    if (motion.matches || loadSettings().cardMotion === false || typeof rotor.animate !== 'function') { turn.finish(); return; }
+    motion.addEventListener?.('change', onMotion);
+    const animate = (node, frames, easing = 'linear') => {
+        const animation = node.animate(frames, { duration: 560, fill: 'both', easing });
+        animation.finished.catch(() => {});
+        turn.animations.push(animation);
+    };
+    try {
+        animate(rotor, [{ transform: `rotateY(${back ? 180 : 0}deg)` }, { transform: `rotateY(${back ? 0 : 180}deg)` }], 'cubic-bezier(.42,0,.2,1)');
+        animate(card.querySelector('.cv-record-lift'), [
+            { transform: 'translateY(0) rotateX(0deg)', offset: 0, easing: 'ease-out' },
+            { transform: 'translateY(-8px) rotateX(1.2deg)', offset: .28 },
+            { transform: 'translateY(-6px) rotateX(.6deg)', offset: .65, easing: 'ease-out' },
+            { transform: 'translateY(0) rotateX(0deg)', offset: 1 },
+        ]);
+        animate(card.querySelector('.cv-record-shadow'), [
+            { transform: 'scaleX(1)', opacity: .6, offset: 0 },
+            { transform: 'translateY(8px) scaleX(.34)', opacity: .3, offset: .4 },
+            { transform: 'scaleX(1)', opacity: .6, offset: 1 },
+        ]);
+        card.querySelectorAll('.cv-record-light').forEach(light => animate(light, [{ opacity: 0 }, { opacity: .5, offset: .42 }, { opacity: 0 }]));
+        Promise.allSettled(turn.animations.map(animation => animation.finished)).then(() => turn.finish());
+        turn.timer = setTimeout(() => turn.finish(), 760);
+    } catch { turn.finish(); }
+}
+
 function bindCardEvents() {
-    document.querySelectorAll('.cv-card').forEach(card => {
+    document.querySelectorAll('#cv_body .cv-record').forEach(card => {
         const avatar = card.dataset.avatar;
         const cName  = card.dataset.name || '';
         const fileName = card.dataset.file;
@@ -1439,13 +1543,23 @@ function bindCardEvents() {
                        || charactersCache.find(c => c.avatar === avatar);
         if (!character) return;
 
-        card.querySelectorAll('.cv-act').forEach(btn => {
+        setRecordAccess(card, 'front');
+        card.querySelectorAll('button[data-act]').forEach(btn => {
             btn.onclick = (e) => {
                 e.stopPropagation();
+                if (cardTurns.has(card)) return;
                 const act = btn.dataset.act;
-                if (act === 'star') {
+                if (act === 'flip') {
+                    turnRecord(card, true);
+                } else if (act === 'star') {
                     const on = toggleStar(avatar, fileName);
-                    btn.classList.toggle('is-on', on);
+                    document.querySelectorAll('#cv_body .cv-record').forEach(item => {
+                        if (item.dataset.avatar !== avatar || item.dataset.file !== fileName) return;
+                        item.querySelectorAll('.cv-star').forEach(star => {
+                            star.classList.toggle('is-on', on);
+                            star.setAttribute('aria-pressed', String(on));
+                        });
+                    });
                     updateTabCounts();
                     if (activeTab === 'favorites' && !on) render();
                 } else if (act === 'edit') {
@@ -1454,39 +1568,26 @@ function bindCardEvents() {
                     handleDelete(character, fileName);
                 } else if (act === 'open') {
                     jumpToChat(character, fileName);
+                } else if (act === 'reader') {
+                    enterReader(character, fileName);
+                } else if (act === 'organize') {
+                    openChatOrganizerModal(character, fileName);
+                } else if (act === 'rules') {
+                    openRulesModal();
+                } else if (act === 'export') {
+                    openExportModal(character, fileName);
                 }
             };
         });
 
         bindPreviewTipEvents(card, character, fileName);
 
-        // 折叠区按钮
-        card.querySelectorAll('.cv-fold-btn').forEach(btn => {
-            btn.onclick = (e) => {
-                e.stopPropagation();
-                const act = btn.dataset.act;
-                if (act === 'reader') enterReader(character, fileName);
-                else if (act === 'rules') openRulesModal();
-                else if (act === 'export') openExportModal(character, fileName);
-            };
-        });
-
-        // 点卡片主体（避开按钮/预览区/折叠区）→ 切换折叠
-        card.querySelector('.cv-card-main').onclick = (e) => {
-            if (e.target.closest('.cv-actions')) return;
-            if (e.target.closest('.cv-fold')) return;
-            // 同一时刻只展开一个：把别的关掉
-            const open = !card.classList.contains('is-folded-open');
-            document.querySelectorAll('.cv-card.is-folded-open').forEach(c => {
-                if (c !== card) c.classList.remove('is-folded-open');
-            });
-            card.classList.toggle('is-folded-open', open);
+        card.onclick = (e) => {
+            if (e.target.closest('button, a, input, .cv-preview')) return;
+            if (window.getSelection()?.toString()) return;
+            turnRecord(card);
         };
     });
-
-    // 当前正在使用的卡片：默认展开折叠区
-    const active = document.querySelector('.cv-card.is-active');
-    if (active) active.classList.add('is-folded-open');
 }
 
 function clearPreviewTipTimers() {
@@ -1982,6 +2083,100 @@ function sanitizeMd(html) {
 /* ============================================================
  *  阅读模式（面板内分页阅读全部楼层）
  * ============================================================ */
+// Literal delimiters are escaped by construction: no user-defined regex executes here.
+function readerStyleRanges(text, cfg) {
+    const marker = key => typeof cfg[key] === 'string' ? cfg[key].trim().slice(0, 16) : '';
+    const pairs = [];
+    for (const [kind, prefix] of [['thought', 'readerThought'], ['dialogue', 'readerDialogue']]) {
+        const open = marker(prefix + 'Open'), close = marker(prefix + 'Close');
+        if (open && close) pairs.push({ open, close, kind });
+    }
+    for (const [open, close] of [['“', '”'], ['「', '」'], ['『', '』'], ['"', '"']]) pairs.push({ open, close, kind: 'dialogue' });
+    const ranges = [];
+    let cursor = 0;
+    while (cursor < text.length) {
+        let best = null;
+        for (const pair of pairs) {
+            const start = text.indexOf(pair.open, cursor);
+            if (start < 0) continue;
+            const close = text.indexOf(pair.close, start + pair.open.length);
+            if (close < 0) continue;
+            if (!best || start < best.start) best = { start, end: close + pair.close.length, kind: pair.kind };
+        }
+        if (!best) break;
+        ranges.push(best);
+        cursor = best.end;
+    }
+    return ranges;
+}
+
+function styleReaderHtml(html, cfg) {
+    if (cfg.readerTextStyles === false) return html;
+    const root = document.createElement('div');
+    root.innerHTML = html; // This input has already passed the existing Markdown sanitiser.
+    root.querySelectorAll('em').forEach(em => {
+        if (!em.closest('pre, code, kbd, samp')) em.classList.add('cv-thought');
+    });
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const groups = [];
+    let group = null, node;
+    while ((node = walker.nextNode())) {
+        if (node.parentElement.closest('pre, code, kbd, samp, a, script, style, textarea')) { group = null; continue; }
+        const block = node.parentElement.closest('p, li, td, th, blockquote, h1, h2, h3, h4, h5, h6, figcaption, div');
+        if (!group || group.block !== block) { group = { block, text: '', nodes: [] }; groups.push(group); }
+        const start = group.text.length;
+        group.text += node.nodeValue;
+        group.nodes.push({ node, start, end: group.text.length });
+    }
+    // Match across inline <strong>/<em> boundaries while preserving their markup.
+    for (const part of groups) {
+        const ranges = readerStyleRanges(part.text, cfg);
+        for (const entry of part.nodes) {
+            const hits = ranges.filter(range => range.end > entry.start && range.start < entry.end);
+            if (!hits.length) continue;
+            const fragment = document.createDocumentFragment();
+            const text = entry.node.nodeValue;
+            let offset = 0;
+            for (const range of hits) {
+                const start = Math.max(0, range.start - entry.start), end = Math.min(text.length, range.end - entry.start);
+                if (start > offset) fragment.appendChild(document.createTextNode(text.slice(offset, start)));
+                const span = document.createElement('span');
+                span.className = `cv-${range.kind}`;
+                span.textContent = text.slice(start, end);
+                fragment.appendChild(span);
+                offset = end;
+            }
+            if (offset < text.length) fragment.appendChild(document.createTextNode(text.slice(offset)));
+            entry.node.replaceWith(fragment);
+        }
+    }
+    return root.innerHTML;
+}
+
+function renderReaderMessage(text, cfg) {
+    if (!text) return '<span class="cv-reader-empty">（空）</span>';
+    const html = cfg.readerRichRender !== false ? sanitizeMd(renderRichMd(text)) : renderLiteMd(text);
+    return html ? styleReaderHtml(html, cfg) : '<span class="cv-reader-empty">（空）</span>';
+}
+function readerTextColors(cfg) {
+    const valid = value => /^#[0-9a-f]{6}$/i.test(String(value || '')) ? value : '';
+    return { dialogue: valid(cfg.readerDialogueColor), thought: valid(cfg.readerThoughtColor) };
+}
+function refreshReaderTextStyles() {
+    const stage = document.querySelector('#cv_body .cv-reader-stage');
+    if (!stage) return;
+    const cfg = loadSettings(), colors = readerTextColors(cfg);
+    for (const kind of ['dialogue', 'thought']) {
+        if (colors[kind]) stage.style.setProperty(`--cv-reader-${kind}-color`, colors[kind]);
+        else stage.style.removeProperty(`--cv-reader-${kind}-color`);
+    }
+    const messages = new Map((readerState._processed || []).map(message => [message.idx, message]));
+    stage.querySelectorAll('.cv-reader-msg').forEach(row => {
+        const message = messages.get(Number(row.dataset.mesIdx));
+        if (message) row.querySelector('.cv-reader-msg-body').innerHTML = renderReaderMessage(message.text, cfg);
+    });
+}
+
 const READER_PAGE_SIZE = 30;
 const readerState = {
     active: false,
@@ -1996,6 +2191,7 @@ let _readerToken = 0;
 let _readerPanelBeforeExpand = null;
 async function enterReader(character, fileName) {
     if (!character || !fileName) return;
+    cancelCardTurns();
     const myToken = ++_readerToken;
     // 进入阅读模式前记录列表滚动位置，退出后恢复，避免回滚到顶
     const bodyEl = document.getElementById('cv_body');
@@ -2121,6 +2317,7 @@ function readerCfg() {
 }
 
 function renderReader() {
+    cancelCardTurns();
     const body = document.getElementById('cv_body');
     if (!body) return;
     const { character, fileName, arr } = readerState;
@@ -2131,7 +2328,9 @@ function renderReader() {
 
     // 悬浮覆层（按钮 + 设置面板 + 分页器都从 stage 移出，作为 cv_body 的直接子节点）
     // 这样它们才真正"悬浮"——不会随 stage 滚动消失
-    const stageStyle = `--cv-reader-font-size:${cfgPre.fontSize}px;--cv-reader-head-scale:${cfgPre.headScale};--cv-reader-head-gap:${cfgPre.headGap}px;--cv-reader-para-gap:${cfgPre.paraGap}em;--cv-reader-line-height:${cfgPre.lineHeight}`;
+    const textColors = readerTextColors(loadSettings());
+    const colorStyle = Object.entries(textColors).filter(([, value]) => value).map(([kind, value]) => `;--cv-reader-${kind}-color:${value}`).join('');
+    const stageStyle = `--cv-reader-font-size:${cfgPre.fontSize}px;--cv-reader-head-scale:${cfgPre.headScale};--cv-reader-head-gap:${cfgPre.headGap}px;--cv-reader-para-gap:${cfgPre.paraGap}em;--cv-reader-line-height:${cfgPre.lineHeight}${colorStyle}`;
     const stageOpen = `<div class="cv-reader-stage" data-pager-mode="${cfgPre.pagerMode}" data-indent="${cfgPre.indent ? '1' : '0'}" data-layout="${cfgPre.layout}" style="${stageStyle}"><div class="cv-reader-column">`;
     const stageClose = `</div></div>`;
     const overlayHtml = `
@@ -2208,18 +2407,12 @@ function renderReader() {
 
     // v0.5.15 fix: renderReader 顶层没有 s 变量，必须显式 load
     const _readerCfg = loadSettings();
-    const _useRichRender = _readerCfg.readerRichRender !== false;
 
     const cardHtml = slice.map(m => {
         const who = escapeHtml(m.who);
         // 把消息按段落（连续换行视作分段）拆成 <p>，单换行保留为 <br>，便于首行缩进
         // 每个非空"行"包成一段，让首行缩进对每段生效（包含连续换行产生的空行也被丢弃）
-        const text = m.text
-            ? ((_useRichRender
-                    ? sanitizeMd(renderRichMd(m.text))
-                    : renderLiteMd(m.text))
-                || '<span class="cv-reader-empty">（空）</span>')
-            : '<span class="cv-reader-empty">（空）</span>';
+        const text = renderReaderMessage(m.text, _readerCfg);
         // user 头像：若聊天 meta 里绑定了 persona 文件名，走 /thumbnail（零附加存储）；否则首字徽章
         const userAvHtml = boundUserAvatarUrl
             ? `<img class="cv-reader-msg-avatar" src="${boundUserAvatarUrl}" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-flex'" alt=""/><div class="cv-reader-msg-avatar cv-reader-user-avatar" style="display:none">${escapeHtml((m.who||'你').slice(0,1))}</div>`
@@ -3088,6 +3281,9 @@ function mountRulesEditor(host, opts) {
 
 function renderReaderSettings(panel) {
     const cfg = loadSettings();
+    const styleColors = readerTextColors(cfg);
+    const lightTextTheme = cfg.theme === 'light' || cfg.theme === 'coffee';
+    const markerValue = key => escapeHtml(typeof cfg[key] === 'string' ? cfg[key].slice(0, 16) : '');
     // 当前聊天的 user 头像绑定
     const rChar = readerState.character || {};
     const rFile = readerState.fileName || '';
@@ -3201,6 +3397,21 @@ function renderReaderSettings(panel) {
                 </div>
                 ${sw('cv_r_indent', !!cfg.readerIndent, '段落首行缩进 2 字')}
             </div>
+            <div class="cv-strip-box" id="cv_r_textstyles_box">
+                <div class="cv-strip-title">对话与心里话</div>
+                ${sw('cv_r_textstyles', cfg.readerTextStyles !== false, '区分正文中的对话与心里话')}
+                <div class="cv-field-hint">引号中的对话使用强调色，*斜体* 作为心里话。仅改变阅读样式。</div>
+                <div class="cv-text-style-fields">
+                    <label>对话颜色<input type="color" id="cv_r_dialogue_color" value="${styleColors.dialogue || (lightTextTheme ? '#7a4d26' : '#e3cba1')}" aria-label="对话颜色"></label>
+                    <label>心里话颜色<input type="color" id="cv_r_thought_color" value="${styleColors.thought || (lightTextTheme ? '#53634d' : '#b6c1b2')}" aria-label="心里话颜色"></label>
+                    <label>对话起始标记<input type="text" data-style-key="readerDialogueOpen" maxlength="16" value="${markerValue('readerDialogueOpen')}" placeholder="可选，例如【"></label>
+                    <label>对话结束标记<input type="text" data-style-key="readerDialogueClose" maxlength="16" value="${markerValue('readerDialogueClose')}" placeholder="可选，例如】"></label>
+                    <label>心里话起始标记<input type="text" data-style-key="readerThoughtOpen" maxlength="16" value="${markerValue('readerThoughtOpen')}" placeholder="可选，例如（"></label>
+                    <label>心里话结束标记<input type="text" data-style-key="readerThoughtClose" maxlength="16" value="${markerValue('readerThoughtClose')}" placeholder="可选，例如）"></label>
+                </div>
+                <div class="cv-field-hint">自定义标记需成对填写。留空时仍识别 “ ”、「 」、『 』和英文双引号。</div>
+                <button class="cv-btn" id="cv_r_textcolors_reset" type="button">颜色跟随主题</button>
+            </div>
             <div class="cv-strip-box" id="cv_r_headscale_box">
                 <div class="cv-strip-title">卡片头部大小（头像 / 角色名 / 楼层号）</div>
                 <div class="cv-reader-fontsize-row">
@@ -3244,6 +3455,29 @@ function renderReaderSettings(panel) {
                         <div class="cv-reader-settings-hint">摘取规则已搬到主面板每张卡片折叠区的「摘取规则」按钮，阅读 / 导出共用一套</div>
         </div>
     `;
+
+    panel.querySelector('#cv_r_textstyles').onchange = event => {
+        saveSettings({ ...loadSettings(), readerTextStyles: event.target.checked });
+        refreshReaderTextStyles();
+    };
+    for (const [id, key] of [['cv_r_dialogue_color', 'readerDialogueColor'], ['cv_r_thought_color', 'readerThoughtColor']]) {
+        panel.querySelector('#' + id).onchange = event => {
+            saveSettings({ ...loadSettings(), [key]: event.target.value });
+            refreshReaderTextStyles();
+        };
+    }
+    panel.querySelectorAll('[data-style-key]').forEach(input => {
+        input.onchange = () => {
+            saveSettings({ ...loadSettings(), [input.dataset.styleKey]: input.value.trim().slice(0, 16) });
+            refreshReaderTextStyles();
+        };
+    });
+    panel.querySelector('#cv_r_textcolors_reset').onclick = () => {
+        saveSettings({ ...loadSettings(), readerDialogueColor: '', readerThoughtColor: '' });
+        panel.querySelector('#cv_r_dialogue_color').value = lightTextTheme ? '#7a4d26' : '#e3cba1';
+        panel.querySelector('#cv_r_thought_color').value = lightTextTheme ? '#53634d' : '#b6c1b2';
+        refreshReaderTextStyles();
+    };
 
     // v0.5.26: 阅读模式的"配色方案"块已删除——它本就只改 chatvault_panel 自身样式，
     //           跟主面板设置完全重复。配色统一在主设置面板里改。
@@ -4339,6 +4573,49 @@ function closeModal() {
     if (m) m.remove();
 }
 
+function openVaultSettingsModal() {
+    closeModal();
+    const settings = loadSettings();
+    const wrap = document.createElement('div');
+    wrap.id = 'cv_modal';
+    wrap.className = 'cv-modal-backdrop';
+    wrap.innerHTML = `<div class="cv-modal cv-appearance-modal" role="dialog" aria-modal="true" aria-labelledby="cv_appearance_title">
+        <button class="cv-modal-close" type="button" data-close aria-label="关闭外观设置">${ICONS.close}</button>
+        <span class="cv-kicker">MAKE IT YOURS</span><h3 id="cv_appearance_title">档案的样子</h3>
+        <div class="cv-modal-body">
+            <div class="cv-theme-choices">${THEMES.map(theme => `<button type="button" class="cv-theme-choice${theme.id === settings.theme ? ' is-on' : ''}" data-theme="${theme.id}" aria-pressed="${theme.id === settings.theme}"><span class="cv-theme-swatch cv-swatch-${theme.id}" aria-hidden="true"></span><strong>${theme.name}</strong></button>`).join('')}</div>
+            <label class="cv-appearance-option"><span><strong>卡片翻面动效</strong><small>轻微抬起、翻转，再柔和落定</small></span><input id="cv_appearance_motion" type="checkbox" ${settings.cardMotion !== false ? 'checked' : ''}></label>
+            <div class="cv-field-hint">字体、桌面窗口与快捷键可在酒馆的扩展设置 → ChatVault 中调整。</div>
+        </div>
+        <div class="cv-modal-actions"><button class="cv-btn cv-btn-primary" type="button" data-close>完成</button></div>
+    </div>`;
+    wrap.onclick = closeModal;
+    wrap.querySelector('.cv-modal').onclick = event => event.stopPropagation();
+    document.getElementById('chatvault_panel').appendChild(wrap);
+    wrap.querySelectorAll('[data-close]').forEach(button => { button.onclick = closeModal; });
+    wrap.querySelectorAll('[data-theme]').forEach(button => {
+        button.onclick = () => {
+            const theme = button.dataset.theme;
+            saveSettings({ ...loadSettings(), theme });
+            applyThemeClass(panelEl);
+            applyThemeClass(document.getElementById('chatvault_settings'));
+            applyCustomColors();
+            wrap.querySelectorAll('[data-theme]').forEach(item => {
+                item.classList.toggle('is-on', item === button);
+                item.setAttribute('aria-pressed', String(item === button));
+            });
+            const select = document.getElementById('cv_set_theme');
+            if (select) select.value = theme;
+            const drawer = document.getElementById('cv_color_drawer_wrap');
+            if (drawer) drawer.style.display = theme === 'custom' ? 'block' : 'none';
+        };
+    });
+    wrap.querySelector('#cv_appearance_motion').onchange = event => {
+        saveSettings({ ...loadSettings(), cardMotion: event.target.checked });
+        if (!event.target.checked) cancelCardTurns();
+    };
+}
+
 /* ============================================================
  *  导出 modal （jsonl 原始 / txt 走自己的摘取规则）
  * ============================================================ */
@@ -5071,11 +5348,11 @@ function applyCustomFont() {
  *  - accent-muted / bgCard-hover 用 color-mix 自动派生，避免手动配错
  * ============================================================ */
 const CV_COLOR_DEFAULTS = {
-    accent: '#34d399',
-    bgPanel: '#212327',
-    bgCard: '#2a2d32',
-    text: '#e4e5e7',
-    overlayAlpha: 0.55,
+    accent: '#e8dec0',
+    bgPanel: '#10100f',
+    bgCard: '#191715',
+    text: '#eee8d7',
+    overlayAlpha: 0.7,
 };
 function applyCustomColors() {
     const s = loadSettings();
@@ -5134,7 +5411,7 @@ function injectSettings() {
     const s = loadSettings();
     const wrap = document.createElement('div');
     wrap.id = 'chatvault_settings';
-    wrap.className = 'extension_container interactable';
+    wrap.className = `extension_container interactable ${currentThemeClass()}`;
     wrap.innerHTML = `
       <div class="inline-drawer">
         <div class="inline-drawer-toggle inline-drawer-header">
@@ -5295,6 +5572,7 @@ function injectSettings() {
         const newTheme = e.target.value;
         saveSettings({ ...cur, theme: newTheme });
         if (panelEl) applyThemeClass(panelEl);
+        applyThemeClass(wrap);
         applyCustomColors();
         // 显隐自定义配色面板
         const cdw = wrap.querySelector('#cv_color_drawer_wrap');

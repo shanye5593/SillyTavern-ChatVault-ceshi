@@ -1,0 +1,160 @@
+# ChatVault UI 设计参考
+
+当前阶段：已按下述卡片方向将主体 UI 接入本地插件代码，正在验证和收尾，尚未完成作者验收。整体方向为简洁、低消耗，并改善字体、布局和动效。
+
+## 中断恢复与验证进度（2026-09-05）
+
+- 上次对话在写入 `tests/local-dom.cjs` 后断线；该文件末尾的 `createTreeWalker` 和导出完整，聊天显示中的断字没有写入代码。
+- 本地 `index.js` / `style.css` 已包含主面板与卡片正反面、翻面动效、外观主题选择，以及阅读对话 / 心里话样式、独立颜色和成对自定义标记。
+- 本次补充 `tests/ui-rewrite.test.cjs`，运行 `node --test tests/ui-rewrite.test.cjs`：13 项通过。覆盖长标题的完整文本与转义、无封面 / 图片失败的回退逻辑、翻面连点锁与焦点、关闭 / 切页 / 切标签时取消动画、减少动态效果与超时回退、主题持久化与自定义颜色清理、正文标记与阅读位置保留。
+- `node --check index.js`、`node --check tests/local-dom.cjs` 与 `git diff --check` 通过。上述测试基于模拟 DOM，不执行真实布局、绘制、图片请求或酒馆 API。
+- 待续：浏览器中核验长标题与缺失封面的实际布局、翻面视觉效果、桌面 / 移动端适配；在运行中的 SillyTavern 验证集成与原有操作。当前内置浏览器不可用，未开展这部分实测，UI 重写仍不能标为完成。
+- 本轮提交范围为插件代码、测试及进度文档，供 ceshi 安装后实测。本文中的 `prototype/` 路径为本地设计资料，不属于插件运行依赖。
+
+## 当前卡片试样反馈（2026-09-05）
+
+- 用户否定第一版的大面积宋体 / 仿宋观感，要求贴合提供的 LP 播放器截图：`prototype/屏幕截图 2026-09-05 082956.png`。
+- 当前试改采用粗黑体标题、干净的无衬线正文、炭黑与奶油白配色，以及左封面 / 右信息的卡片比例。截图中的封面仅作本地占位图。
+- 入口仍为 `prototype/retro-cards-v1.html`；此版待用户看样确认，不能视为最终 UI 方向已验收。
+- 用户认可目前的配色和整体感觉，界面减法留到最后；当前明确选择轻拟真的卡片翻动（轻微抬起、竖轴旋转、薄边和阴影、柔和落定）。流体覆盖保留为进入阅读时的候选方向，尚未要求实现。
+
+用户归纳的四个方向（尚未确定最终采用方向）：
+
+1. 复古感：目前参考样本最多，正在讨论配色、字体、动效与质感。
+2. 手写感：适合书籍概念，但比较考究素材。
+3. 磨砂渐变质感：讲究配色和谐，偏现代美学。
+4. 极简风格：仅强调排版和低消耗。
+
+## 01 · Depth Gallery
+
+- 链接：https://tympanus.net/Tutorials/DepthGallery/
+- 记录日期：2026-09-05
+- 用户喜欢的部分：磨砂渐变质感。
+- 后续用途：作为 UI 材质与背景效果的视觉参考，结合性能要求评估实现。
+
+## 02 · Gobzzz Music Player
+
+- 链接：https://gobzzzmusicplayer2024.vercel.app/
+- 记录日期：2026-09-05
+- 用户偏好强度：很喜欢。
+- 用户喜欢的部分：整体风格、字体风格、配色、卡片设计、排版和动效。
+- 补充偏好：用户特别认可卡片的美观程度，以及配色和排版。
+- 重点关注：播放键上的动效，用户特别喜欢其丝滑感。
+- 后续用途：作为整体视觉、字体、配色、卡片布局和交互动效的重要参考；设计按钮反馈与状态切换时重点对照播放键动效。
+
+## 03 · GreenSock CodePen（azmKBBJ）
+
+- 链接：https://codepen.io/GreenSock/full/azmKBBJ
+- 记录日期：2026-09-05
+- 用户评价：单纯有趣，不一定适配插件。
+- 定位：趣味动效灵感收藏，尚未确定适配性，不作为已确定的实现需求。
+
+## 04 · 翻书特效（daniel-mu-oz / RNRaXwZ）
+
+- 链接：https://codepen.io/daniel-mu-oz/full/RNRaXwZ
+- 记录日期：2026-09-05
+- 用户描述：翻书特效，不一定适合插件。
+- 定位：翻书动效灵感收藏；适配性待评估，不作为已确定的实现需求。
+
+## 05 · 满屏动效（GreenSock / EaKpEpJ）
+
+- 链接：https://codepen.io/GreenSock/full/EaKpEpJ
+- 记录日期：2026-09-05
+- 用户评价：不错的满屏动效。
+- 定位：满屏动效参考；具体应用位置和实现方式待后续讨论。
+
+## 06 · 滑动特效（GreenSock / raerLaK）
+
+- 链接：https://codepen.io/GreenSock/full/raerLaK
+- 记录日期：2026-09-05
+- 用户评价：不错的滑动特效。
+- 定位：滑动交互动效参考；具体应用位置和实现方式待后续讨论。
+
+## 07 · WebGL Magazine
+
+- 链接：https://webgl-magazine.vercel.app/
+- 记录日期：2026-09-05
+- 用户评价：挺有趣的。
+- 定位：趣味视觉与交互灵感收藏，具体适配性待后续评估。
+
+## 08 · Osmosupply CodePen（qEEKRrx）
+
+- 链接：https://codepen.io/osmosupply/full/qEEKRrx
+- 记录日期：2026-09-05
+- 用户评价：这个应该用得上。
+- 定位：优先评估的应用候选，具体效果与应用位置待查看和讨论。
+
+## 09 · 像素风格（filipz / JoogyPM）
+
+- 链接：https://codepen.io/filipz/full/JoogyPM
+- 记录日期：2026-09-05
+- 用户评价：有趣的像素风格，不一定用得上。
+- 定位：像素风格灵感收藏；适配性待评估，不作为已确定的实现需求。
+
+## 10 · 层叠式表现（Osmosupply / NWQevrB）
+
+- 链接：https://codepen.io/osmosupply/full/NWQevrB
+- 记录日期：2026-09-05
+- 用户评价：层叠式表现力不错，不确定插件能否用上，但以后的网页应该用得上。
+- 关注点：层叠式视觉表现。
+- 定位：未来网页设计的重要灵感收藏；ChatVault 适配性待评估，不作为已确定的插件实现需求。
+
+## 11 · Animated Letters Shader
+
+- 链接：https://tympanus.net/Tutorials/AnimatedLettersShader/
+- 记录日期：2026-09-05
+- 用户评价：有趣，不一定用得上。
+- 定位：趣味视觉与动效灵感收藏；适配性待评估，不作为已确定的实现需求。
+
+## 12 · Gooey Search
+
+- 链接：https://tympanus.net/Tutorials/GooeySearch/
+- 记录日期：2026-09-05
+- 用户评价：有趣，不一定用得上。
+- 定位：趣味交互动效灵感收藏；适配性待评估，不作为已确定的实现需求。
+
+## 13 · GreenSock CodePen（eYwbjdz）
+
+- 链接：https://codepen.io/GreenSock/full/eYwbjdz
+- 记录日期：2026-09-05
+- 用户评价：设计很好看，动效也不错，不过风格比较花哨，不一定适合阅读的概念。
+- 关注点：视觉设计与动效。
+- 适配顾虑：风格偏花哨，与阅读场景的适配性待评估。
+- 定位：视觉与动效灵感收藏，不作为已确定的阅读界面设计方案。
+
+## 14 · On Scroll Columns / Rows（index2）
+
+- 链接：https://tympanus.net/Development/OnScrollColumnsRows/index2.html
+- 记录日期：2026-09-05
+- 用户评价：群卡片展示，不过效果都一般。
+- 定位：群卡片展示参考，用户认可程度一般，不作为优先设计方向。
+
+## 15 · 群卡片展示（d3adr4bbit / RwvmGzV）
+
+- 链接：https://codepen.io/d3adr4bbit/full/RwvmGzV
+- 记录日期：2026-09-05
+- 用户评价：群卡片展示，有点厉害，不过应该不适合插件。
+- 定位：群卡片展示灵感收藏；保留用户对插件适配性的顾虑，不作为已确定的实现需求。
+
+## 16 · Image Tiles Menu
+
+- 链接：https://tympanus.net/Development/ImageTilesMenu/
+- 记录日期：2026-09-05
+- 用户评价：双色字体配色的思路还不错。
+- 关注点：文字使用双色搭配的设计思路。
+- 定位：字体配色参考，具体应用位置待后续讨论。
+
+## 17 · Kengo Works / Fable
+
+- 链接：https://www.kengoworks.com/fable
+- 记录日期：2026-09-05
+- 用户评价：有一定手写感。
+- 定位：手写感视觉参考。
+
+## 18 · mono-color-skill（yanliudesign）
+
+- 链接：https://github.com/yanliudesign/mono-color-skill
+- 记录日期：2026-09-05
+- 用户描述：复古风格技能，但也不能过多依赖。
+- 定位：复古风格设计资源收藏；仅作为辅助参考，避免过度依赖其风格和规则。
+- 当前状态：已记录链接，未安装或应用该技能。
