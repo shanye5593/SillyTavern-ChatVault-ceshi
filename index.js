@@ -1380,7 +1380,13 @@ function renderCard(character, chat) {
                   </span>
                 </button>
                 <div class="cv-record-info">
-                  <h3 class="cv-record-title" title="${escapeHtml(displayTitle)}">${highlight(displayTitle, searchQuery)}</h3>
+                  <div class="cv-record-heading">
+                    <div class="cv-record-meta">
+                      <span class="cv-record-character" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
+                      <span class="cv-record-count">${msgCount === null ? '楼层数未知' : `共 ${msgCount} 楼`}</span>
+                    </div>
+                    <h3 class="cv-record-title" title="${escapeHtml(displayTitle)}">${highlight(displayTitle, searchQuery)}</h3>
+                  </div>
                   <div class="cv-preview is-loading" data-preview="1" aria-label="右键或长按查看完整预览">加载预览中…</div>
                   <div class="cv-record-primary">
                     <button class="cv-record-btn" data-act="reader" type="button">${ICONS.book}<span>阅读故事</span></button>
